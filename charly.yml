@@ -9,8 +9,8 @@ comfyui:
             cloned entrypoint and Manager, the model dirs, the download-tooling
             packages, and the live /system_stats API on port 8188.
         require:
-            - '@github.com/opencharly/layer-cuda:v2026.243.0408'
-            - '@github.com/opencharly/layer-supervisord:v2026.240.0121'
+            - '@github.com/opencharly/layer-cuda:v2026.271.2310'
+            - '@github.com/opencharly/layer-supervisord:v2026.271.1817'
         distro:
             arch:
                 package:
