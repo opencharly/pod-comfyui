@@ -79,7 +79,7 @@ comfyui:
                 CKPT="${BASE}/models/checkpoints/${COMFYUI_MODEL}"
                 if [ ! -s "${CKPT}" ]; then
                   curl -fL --continue-at - --output "${CKPT}.part" "${COMFYUI_MODEL_URL:?COMFYUI_MODEL_URL must be declared by the candy or set per deploy}"
-                  echo "${comfyui_model_sha256:?comfyui_model_sha256 must be supplied at deploy time}  ${CKPT}.part" | sha256sum -c -
+                  echo "${COMFYUI_MODEL_SHA256:?COMFYUI_MODEL_SHA256 must be declared by the candy or set per deploy}  ${CKPT}.part" | sha256sum -c -
                   mv "${CKPT}.part" "${CKPT}"
                 fi
                 exec python /opt/comfyui/main.py --listen 0.0.0.0 --port 8188 \

@@ -49,6 +49,13 @@ comfy-kitchen = "==0.2.41"
 comfy-aimdo = "==0.6.0"
 simpleeval = ">=1.0.0"
 blake3 = "*"
+# Every requirement the pinned tag's own requirements.txt names and this env did not declare.
+# comfy-angle is the one that MATTERED: without it ComfyUI logs
+#   ModuleNotFoundError: No module named 'comfy_angle'   (nodes_glsl.py)
+# on a live start -- found by RUNNING the image, not by reading the file.
+comfy-angle = "*"
+pyopengl = ">=3.1.8"
+filelock = "*"
 
 # NLP / Tokenization
 tokenizers = ">=0.13.3"
