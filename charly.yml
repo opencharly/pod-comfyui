@@ -13,7 +13,21 @@ comfyui:
             - '@github.com/opencharly/layer-supervisord:v2026.271.1817'
         env:
             COMFYUI_REF: v0.45.3
-            COMFYUI_MODEL: model.safetensors
+            # The checkpoint is fetched at FIRST BOOT, never baked into the image. These two are the
+            # download inputs; the defaults are the artifact this candy was proven with, and both are
+            # overridable per deploy (`charly config comfyui -e COMFYUI_MODEL_URL=…`). They are
+            # declared HERE because the start script hard-requires them: an undeclared input would
+            # turn a missing value into a container that starts and immediately dies.
+            COMFYUI_MODEL: v1-5-pruned-emaonly-fp16.safetensors
+            COMFYUI_MODEL_URL: https://huggingface.co/Comfy-Org/stable-diffusion-v1-5-archive/resolve/main/v1-5-pruned-emaonly-fp16.safetensors
+            COMFYUI_MODEL_SHA256: e9476a13728cd75d8279f6ec8bad753a66a1957ca375a1464dc63b37db6e3916
+        env_accept:
+            - name: COMFYUI_MODEL_URL
+              description: "Checkpoint download URL for first boot (default: the SD1.5 fp16 checkpoint this candy is proven with)."
+            - name: COMFYUI_MODEL_SHA256
+              description: "sha256 of that checkpoint; the first-boot download is verified against it before the server starts."
+            - name: COMFYUI_MODEL
+              description: "File name the checkpoint is stored as, under models/checkpoints (default: v1-5-pruned-emaonly-fp16.safetensors)."
         distro:
             arch:
                 package:
@@ -64,7 +78,7 @@ comfyui:
                 mkdir -p "${BASE}"/models/{photomaker,style_models,text_encoders,unet,upscale_models,vae,vae_approx}
                 CKPT="${BASE}/models/checkpoints/${COMFYUI_MODEL}"
                 if [ ! -s "${CKPT}" ]; then
-                  curl -fL --continue-at - --output "${CKPT}.part" "${comfyui_model_url:?comfyui_model_url must be supplied at deploy time}"
+                  curl -fL --continue-at - --output "${CKPT}.part" "${COMFYUI_MODEL_URL:?COMFYUI_MODEL_URL must be declared by the candy or set per deploy}"
                   echo "${comfyui_model_sha256:?comfyui_model_sha256 must be supplied at deploy time}  ${CKPT}.part" | sha256sum -c -
                   mv "${CKPT}.part" "${CKPT}"
                 fi
