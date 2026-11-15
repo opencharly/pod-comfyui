@@ -86,7 +86,11 @@ comfyui:
                   --enable-manager --base-directory "${BASE}"
             - check: the image records the ComfyUI release tag it was built from
               id: comfyui-pinned-ref
-              command: grep -qx "${COMFYUI_REF}" /opt/comfyui/.charly-ref
+              # No authored variable here on purpose: a braced ${VAR} the check context cannot
+              # resolve makes the step SKIP, and a skip reads green (measured on a bed run --
+              # "unresolved variables: COMFYUI_REF"). The BED owns the tag value and asserts it
+              # against the server's own API; this check asserts the FILE, which needs no env.
+              command: test -s /opt/comfyui/.charly-ref && grep -qE '^v[0-9]+\.[0-9]+' /opt/comfyui/.charly-ref
               exit_status: 0
             - check: the start script is present and executable
               id: comfyui-start-script
@@ -118,6 +122,11 @@ comfyui:
               id: comfyui-system-stats
               context:
                 - runtime
+              # On a FRESH volume the server is still fetching a 2 GB checkpoint when this runs;
+              # a single-shot probe gets "connection reset by peer" (measured). The window makes
+              # a cold boot a wait instead of a failure.
+              eventually: 5m
+              retry_interval: 10s
               http:
                 http: http://127.0.0.1:${HOST_PORT:8188}/system_stats
                 status: 200
@@ -127,7 +136,15 @@ comfyui:
               id: comfyui-model-in-volume
               context:
                 - runtime
-              command: test -s "${HOME}/ComfyUI/models/checkpoints/${COMFYUI_MODEL}"
+              # BARE $VAR, not ${VAR}: the plan runner expands a braced reference against the
+              # TASK env and SKIPS the step when it cannot (measured), while a bare reference
+              # passes through to the shell, which reads the CONTAINER's environment at run
+              # time. The `-n` guard matters: without it an unset name would test the
+              # checkpoints/ DIRECTORY, and `test -s` on a directory is true.
+              command: |
+                set -eu
+                test -n "$COMFYUI_MODEL"
+                test -s "$HOME/ComfyUI/models/checkpoints/$COMFYUI_MODEL"
               exit_status: 0
 
 
