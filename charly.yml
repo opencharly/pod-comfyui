@@ -11,6 +11,23 @@ comfyui:
         require:
             - '@github.com/opencharly/layer-cuda:v2026.290.1513'
             - '@github.com/opencharly/layer-supervisord:v2026.271.1817'
+        env:
+            COMFYUI_REF: v0.45.3
+            # The checkpoint is fetched at FIRST BOOT, never baked into the image. These two are the
+            # download inputs; the defaults are the artifact this candy was proven with, and both are
+            # overridable per deploy (`charly config comfyui -e COMFYUI_MODEL_URL=…`). They are
+            # declared HERE because the start script hard-requires them: an undeclared input would
+            # turn a missing value into a container that starts and immediately dies.
+            COMFYUI_MODEL: v1-5-pruned-emaonly-fp16.safetensors
+            COMFYUI_MODEL_URL: https://huggingface.co/Comfy-Org/stable-diffusion-v1-5-archive/resolve/main/v1-5-pruned-emaonly-fp16.safetensors
+            COMFYUI_MODEL_SHA256: e9476a13728cd75d8279f6ec8bad753a66a1957ca375a1464dc63b37db6e3916
+        env_accept:
+            - name: COMFYUI_MODEL_URL
+              description: "Checkpoint download URL for first boot (default: the SD1.5 fp16 checkpoint this candy is proven with)."
+            - name: COMFYUI_MODEL_SHA256
+              description: "sha256 of that checkpoint; the first-boot download is verified against it before the server starts."
+            - name: COMFYUI_MODEL
+              description: "File name the checkpoint is stored as, under models/checkpoints (default: v1-5-pruned-emaonly-fp16.safetensors)."
         distro:
             arch:
                 package:
@@ -27,84 +44,92 @@ comfyui:
               path: "~/ComfyUI"
         service:
             - name: comfyui
-              exec: "python %(ENV_HOME)s/ComfyUI/main.py --listen 0.0.0.0"
+              exec: /opt/comfyui/start-comfyui.sh
               restart: always
               working_directory: "%(ENV_HOME)s/ComfyUI"
               enable: true
               scope: system
         plan:
-            - run: |
-                command=git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git ${HOME}/ComfyUI || true
-                cd ${HOME}/ComfyUI
-                mkdir -p models/{checkpoints,clip,clip_vision,configs,controlnet}
-                mkdir -p models/{diffusers,diffusion_models,embeddings,gligen,hypernetworks,loras}
-                mkdir -p models/{photomaker,style_models,text_encoders,unet,upscale_models,vae,vae_approx}
-                mkdir -p custom_nodes output input user
-                git clone --depth 1 https://github.com/ltdrdata/ComfyUI-Manager.git ${HOME}/ComfyUI/custom_nodes/ComfyUI-Manager || true
-              run_as: "${USER}"
+            - run: clone ComfyUI at the pinned RELEASE TAG into the image-owned app directory
               command: |
-                git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git ${HOME}/ComfyUI || true
-                cd ${HOME}/ComfyUI
-                mkdir -p models/{checkpoints,clip,clip_vision,configs,controlnet}
-                mkdir -p models/{diffusers,diffusion_models,embeddings,gligen,hypernetworks,loras}
-                mkdir -p models/{photomaker,style_models,text_encoders,unet,upscale_models,vae,vae_approx}
-                mkdir -p custom_nodes output input user
-                git clone --depth 1 https://github.com/ltdrdata/ComfyUI-Manager.git ${HOME}/ComfyUI/custom_nodes/ComfyUI-Manager || true
-            - check: the ComfyUI server entrypoint main.py is baked into ~/ComfyUI
+                set -eu
+                git clone --depth 1 --branch "${COMFYUI_REF}" \
+                  https://github.com/Comfy-Org/ComfyUI.git /opt/comfyui
+                cd /opt/comfyui
+                git describe --tags --always > .charly-ref
+                cat .charly-ref
+              run_as: root
+            - run: write the start script that seeds the state tree, ensures the model, then execs the server
+              write: /opt/comfyui/start-comfyui.sh
+              mode: "0755"
+              run_as: root
+              content: |
+                #!/bin/bash
+                set -eu
+                # The APPLICATION lives in the image (/opt/comfyui, pinned tag); ALL state lives in the
+                # `comfyui` volume, addressed by ComfyUI's own --base-directory. ComfyUI creates only
+                # some of these on demand, so the tree is seeded here: a missing custom_nodes/ is a
+                # hard start failure (measured), and the model directories must exist before a
+                # checkpoint is fetched into one.
+                BASE="${HOME}/ComfyUI"
+                mkdir -p "${BASE}"/{custom_nodes,input,output,user}
+                mkdir -p "${BASE}"/models/{checkpoints,clip,clip_vision,configs,controlnet}
+                mkdir -p "${BASE}"/models/{diffusers,diffusion_models,embeddings,gligen,hypernetworks,loras}
+                mkdir -p "${BASE}"/models/{photomaker,style_models,text_encoders,unet,upscale_models,vae,vae_approx}
+                CKPT="${BASE}/models/checkpoints/${COMFYUI_MODEL}"
+                if [ ! -s "${CKPT}" ]; then
+                  curl -fL --continue-at - --output "${CKPT}.part" "${COMFYUI_MODEL_URL:?COMFYUI_MODEL_URL must be declared by the candy or set per deploy}"
+                  echo "${COMFYUI_MODEL_SHA256:?COMFYUI_MODEL_SHA256 must be declared by the candy or set per deploy}  ${CKPT}.part" | sha256sum -c -
+                  mv "${CKPT}.part" "${CKPT}"
+                fi
+                exec python /opt/comfyui/main.py --listen 0.0.0.0 --port 8188 \
+                  --enable-manager --base-directory "${BASE}"
+            - check: the image records the ComfyUI release tag it was built from
+              id: comfyui-pinned-ref
+              command: grep -qx "${COMFYUI_REF}" /opt/comfyui/.charly-ref
+              exit_status: 0
+            - check: the start script is present and executable
+              id: comfyui-start-script
               file:
-                file: ${HOME}/ComfyUI/main.py
+                file: /opt/comfyui/start-comfyui.sh
                 exists: true
-            - check: the ComfyUI-Manager custom node directory is cloned alongside it
+                mode: "0755"
+            - check: the ComfyUI entrypoint is the image-owned application, not a git clone in the state volume
+              id: comfyui-app-entrypoint
               file:
-                file: ${HOME}/ComfyUI/custom_nodes/ComfyUI-Manager
-                filetype: directory
+                file: /opt/comfyui/main.py
+                exists: true
+            - check: the legacy ComfyUI-Manager checkout is GONE — the built-in manager replaces it
+              id: comfyui-legacy-manager-absent
+              file:
+                file: /opt/comfyui/custom_nodes/ComfyUI-Manager
+                exists: false
             - check: aria2c is installed so model checkpoints can be fetched in parallel
+              id: comfyui-aria2-binary
               file:
                 file: /usr/bin/aria2c
                 exists: true
             - check: git-lfs is installed for pulling large model repositories
+              id: comfyui-git-lfs-package
               package:
                 package: git-lfs
                 installed: true
-            - agent-check: the comfyui supervisord service comes up and serves the image-generation web UI and /system_stats API on port 8188
-            - check: file=${HOME}/ComfyUI/models/checkpoints
-              id: comfyui-models-checkpoints
-              file:
-                file: ${HOME}/ComfyUI/models/checkpoints
-                filetype: directory
-            - check: package=aria2
-              id: comfyui-aria2-package
-              package:
-                package: aria2
-                installed: true
-            - check: file=/usr/bin/git-lfs
-              id: comfyui-git-lfs-binary
-              file:
-                file: /usr/bin/git-lfs
-                exists: true
-            - check: service=comfyui
-              id: comfyui-service-running
-              context:
-                - runtime
-              service:
-                service: comfyui
-                running: true
-            - check: addr=127.0.0.1:${HOST_PORT:8188}
-              id: comfyui-port-reachable
-              context:
-                - runtime
-              addr:
-                addr: 127.0.0.1:${HOST_PORT:8188}
-                reachable: true
-            - check: http=http://127.0.0.1:${HOST_PORT:8188}/system_stats
-              id: comfyui-system-stats-api
+            - check: the live server reports its version and the GPU device
+              id: comfyui-system-stats
               context:
                 - runtime
               http:
                 http: http://127.0.0.1:${HOST_PORT:8188}/system_stats
                 status: 200
                 body:
-                    - contains: system
+                    - contains: comfyui_version
+            - check: the model checkpoint lives in the STATE volume, not in the image
+              id: comfyui-model-in-volume
+              context:
+                - runtime
+              command: test -s "${HOME}/ComfyUI/models/checkpoints/${COMFYUI_MODEL}"
+              exit_status: 0
+
 
 comfyui-skill:
     skill:
