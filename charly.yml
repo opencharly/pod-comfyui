@@ -27,7 +27,8 @@ comfyui:
             # (bf16 is 12.3 GB for the DiT alone and leaves nothing for a LoRA stack):
             #   diffusion_models 6.2 GB + text_encoders 5.6 GB + vae 0.34 GB ~= 12.2 GB.
             # Verified at the boundary: every file is sha256-checked before it is moved into
-            # place, and a partial download is never reused (`--continue-at -` into a .part).
+            # place. A partial download IS reused: `--continue-at -` resumes into the same .part, and the
+            # file is only renamed into place after its sha256 verifies.
             COMFYUI_MODEL_SET: |
                 diffusion_models/z_image_turbo_int8_convrot.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/diffusion_models/z_image_turbo_int8_convrot.safetensors|be517ebd47c912a5626a588e1aeea43e6be4a43c0cdcd2b48a2a780d9f358635
                 text_encoders/qwen_3_4b_fp8_mixed.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors|72450b19758172c5a7273cf7de729d1c17e7f434a104a00167624cba94f68f15
@@ -99,8 +100,8 @@ comfyui:
                 # before the server starts would push every cold boot past the window this bed and
                 # its callers allow for a first response. ComfyUI only needs these files when a
                 # workflow references them, so the server comes up first and the weights land
-                # behind it. Same discipline as the checkpoint: sha256 before the move, .part
-                # never reused.
+                # behind it. Same discipline as the checkpoint: sha256 verified before the
+                # move, and a .part is RESUMED (--continue-at -) rather than discarded.
                 if [ -n "${COMFYUI_MODEL_SET:-}" ]; then
                   (
                     printf '%s\n' "${COMFYUI_MODEL_SET}" | while IFS='|' read -r rel url sha; do

@@ -82,7 +82,8 @@ alongside a LoRA stack:
 | `ae.safetensors` | `models/vae/` | 0.34 GB |
 
 Every file is sha256-checked before it is moved into place; a partial download lands in a
-`.part` and is never reused. `COMFYUI_MODEL_SET=` (empty) disables the set entirely — useful
+`.part` and RESUMED on the next attempt (`--continue-at -`); it is renamed into place only
+after its sha256 verifies. `COMFYUI_MODEL_SET=` (empty) disables the set entirely — useful
 when you want the fast single-checkpoint boot and nothing else.
 
 To generate: load the diffusion model, the Qwen3 text encoder and the `ae` VAE, then sample at
