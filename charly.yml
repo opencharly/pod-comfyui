@@ -123,8 +123,6 @@ comfyui:
                       mkdir -p "$(dirname "${DEST}")"
                       echo "fetching ${rel}"
                       fetch_verified "${DEST}" "${url}" "${sha:-}" || continue
-                        mv "${DEST}.part" "${DEST}"
-                      fi
                     done
                     # Completion marker INSIDE the backgrounded subshell, so it is written
                     # only when every file has been attempted. The check waits for it, so it
