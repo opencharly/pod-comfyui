@@ -22,7 +22,7 @@ comfyui:
             COMFYUI_MODEL_URL: https://huggingface.co/Comfy-Org/stable-diffusion-v1-5-archive/resolve/main/v1-5-pruned-emaonly-fp16.safetensors
             COMFYUI_MODEL_SHA256: e9476a13728cd75d8279f6ec8bad753a66a1957ca375a1464dc63b37db6e3916
             # A MODEL SET, fetched on first boot the same way the single checkpoint above is:
-            # one entry per line, `models/<subdir>/<filename>|<url>|<sha256>`. This is the
+            # one entry per line, `<subdir>/<filename>|<url>|<sha256>`. This is the
             # quantized Z-Image-Turbo trio, sized to leave real headroom on a 16 GB card
             # (bf16 is 12.3 GB for the DiT alone and leaves nothing for a LoRA stack):
             #   diffusion_models 6.2 GB + text_encoders 5.6 GB + vae 0.34 GB ~= 12.2 GB.
@@ -90,12 +90,25 @@ comfyui:
                 mkdir -p "${BASE}"/models/{checkpoints,clip,clip_vision,configs,controlnet}
                 mkdir -p "${BASE}"/models/{diffusers,diffusion_models,embeddings,gligen,hypernetworks,loras}
                 mkdir -p "${BASE}"/models/{photomaker,style_models,text_encoders,unet,upscale_models,vae,vae_approx}
+                # ONE fetch path for every model file, whatever declares it. Resume into a
+                # .part, verify the sha256, then rename into place — extracted because the
+                # single checkpoint and the model set were two copies of this same sequence
+                # (R2), and a second copy drifts.
+                fetch_verified() {
+                  _dest="$1"; _url="$2"; _sha="$3"
+                  if [ -s "${_dest}" ]; then return 0; fi
+                  curl -fL --continue-at - --output "${_dest}.part" "${_url}" \
+                    || { echo "FAILED ${_dest}" >&2; return 1; }
+                  if [ -n "${_sha}" ]; then
+                    printf '%s  %s\n' "${_sha}" "${_dest}.part" | sha256sum -c - >/dev/null \
+                      || { echo "SHA MISMATCH ${_dest}" >&2; rm -f "${_dest}.part"; return 1; }
+                  fi
+                  mv "${_dest}.part" "${_dest}"
+                }
                 CKPT="${BASE}/models/checkpoints/${COMFYUI_MODEL}"
-                if [ ! -s "${CKPT}" ]; then
-                  curl -fL --continue-at - --output "${CKPT}.part" "${COMFYUI_MODEL_URL:?COMFYUI_MODEL_URL must be declared by the candy or set per deploy}"
-                  echo "${COMFYUI_MODEL_SHA256:?COMFYUI_MODEL_SHA256 must be declared by the candy or set per deploy}  ${CKPT}.part" | sha256sum -c -
-                  mv "${CKPT}.part" "${CKPT}"
-                fi
+                fetch_verified "${CKPT}" \
+                  "${COMFYUI_MODEL_URL:?COMFYUI_MODEL_URL must be declared by the candy or set per deploy}" \
+                  "${COMFYUI_MODEL_SHA256:?COMFYUI_MODEL_SHA256 must be declared by the candy or set per deploy}"
                 # The MODEL SET runs in the BACKGROUND, deliberately: it is ~12 GB, and doing it
                 # before the server starts would push every cold boot past the window this bed and
                 # its callers allow for a first response. ComfyUI only needs these files when a
@@ -108,16 +121,18 @@ comfyui:
                       [ -n "${rel:-}" ] || continue
                       DEST="${BASE}/models/${rel}"
                       mkdir -p "$(dirname "${DEST}")"
-                      if [ ! -s "${DEST}" ]; then
-                        echo "fetching ${rel}"
-                        curl -fL --continue-at - --output "${DEST}.part" "${url}" || { echo "FAILED ${rel}" >&2; continue; }
-                        if [ -n "${sha:-}" ]; then
-                          printf '%s  %s\n' "${sha}" "${DEST}.part" | sha256sum -c - || { echo "SHA MISMATCH ${rel}" >&2; rm -f "${DEST}.part"; continue; }
-                        fi
+                      echo "fetching ${rel}"
+                      fetch_verified "${DEST}" "${url}" "${sha:-}" || continue
                         mv "${DEST}.part" "${DEST}"
                       fi
                     done
+                    # Completion marker INSIDE the backgrounded subshell, so it is written
+                    # only when every file has been attempted. The check waits for it, so it
+                    # cannot observe a half-fetched volume (R3: a race is root-fixed, not
+                    # hidden behind a sleep). The server still starts without waiting.
+                    touch "${BASE}/model-set.done"
                   ) > "${BASE}/model-set-fetch.log" 2>&1 &
+
                   echo "model set fetching in background (log: ${BASE}/model-set-fetch.log)"
                 fi
                 exec python /opt/comfyui/main.py --listen 0.0.0.0 --port 8188 \
@@ -198,6 +213,19 @@ comfyui:
                   echo "no model set declared; nothing to verify"
                   exit 0
                 fi
+                # The fetch runs in the BACKGROUND so a ~12 GB download cannot delay boot, which
+                # means this check could otherwise observe the volume mid-fetch and report a
+                # missing file that is simply still downloading. Wait for the completion marker
+                # the fetch writes as its last act (bounded: 20 min, then it is a real failure).
+                attempts=0
+                while [ ! -e "$HOME/ComfyUI/model-set.done" ]; do
+                  attempts=$((attempts + 1))
+                  if [ "$attempts" -gt 240 ]; then
+                    echo "model set fetch did not complete within 20m" >&2
+                    exit 1
+                  fi
+                  sleep 5
+                done
                 fail=0
                 while IFS='|' read -r rel url sha; do
                   [ -n "${rel:-}" ] || continue

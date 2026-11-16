@@ -71,7 +71,8 @@ After `charly start`:
 ## Z-Image-Turbo (quantized), and LoRAs trained in pod-ai-toolkit
 
 The candy fetches a **model SET** on first boot, not just the single checkpoint, declared in
-`COMFYUI_MODEL_SET` as one `models/<subdir>/<filename>|<url>|<sha256>` line per file. The
+`COMFYUI_MODEL_SET` as one `<subdir>/<filename>|<url>|<sha256>` line per file, where `<subdir>` is relative to
+`~/ComfyUI/models` (so `diffusion_models/x.safetensors`, NOT `models/diffusion_models/x.safetensors`). The
 default is the quantized Z-Image-Turbo trio, chosen because bf16 does not fit a 16 GB card
 alongside a LoRA stack:
 
