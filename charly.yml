@@ -215,14 +215,21 @@ comfyui:
                 # means this check could otherwise observe the volume mid-fetch and report a
                 # missing file that is simply still downloading. Wait for the completion marker
                 # the fetch writes as its last act (bounded: 20 min, then it is a real failure).
-                attempts=0
+                # Named, not bare: the wait is bounded by the set's own size rather than by a
+                # number that looks arbitrary. 12 GB at a pessimistic 10 Mbit/s is ~2.7 h, so the
+                # bound is deliberately generous; it exists to turn a hung fetch into a FAILURE
+                # rather than an indefinite hang, not to police a slow link. Override with
+                # COMFYUI_MODEL_SET_WAIT_SECS on a slow host.
+                MODEL_SET_WAIT_SECS="${COMFYUI_MODEL_SET_WAIT_SECS:-7200}"
+                MODEL_SET_POLL_SECS=5
+                waited=0
                 while [ ! -e "$HOME/ComfyUI/model-set.done" ]; do
-                  attempts=$((attempts + 1))
-                  if [ "$attempts" -gt 240 ]; then
-                    echo "model set fetch did not complete within 20m" >&2
+                  if [ "$waited" -ge "$MODEL_SET_WAIT_SECS" ]; then
+                    echo "model set fetch did not complete within ${MODEL_SET_WAIT_SECS}s" >&2
                     exit 1
                   fi
-                  sleep 5
+                  sleep "$MODEL_SET_POLL_SECS"
+                  waited=$((waited + MODEL_SET_POLL_SECS))
                 done
                 fail=0
                 while IFS='|' read -r rel url sha; do
