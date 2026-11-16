@@ -21,6 +21,17 @@ comfyui:
             COMFYUI_MODEL: v1-5-pruned-emaonly-fp16.safetensors
             COMFYUI_MODEL_URL: https://huggingface.co/Comfy-Org/stable-diffusion-v1-5-archive/resolve/main/v1-5-pruned-emaonly-fp16.safetensors
             COMFYUI_MODEL_SHA256: e9476a13728cd75d8279f6ec8bad753a66a1957ca375a1464dc63b37db6e3916
+            # A MODEL SET, fetched on first boot the same way the single checkpoint above is:
+            # one entry per line, `models/<subdir>/<filename>|<url>|<sha256>`. This is the
+            # quantized Z-Image-Turbo trio, sized to leave real headroom on a 16 GB card
+            # (bf16 is 12.3 GB for the DiT alone and leaves nothing for a LoRA stack):
+            #   diffusion_models 6.2 GB + text_encoders 5.6 GB + vae 0.34 GB ~= 12.2 GB.
+            # Verified at the boundary: every file is sha256-checked before it is moved into
+            # place, and a partial download is never reused (`--continue-at -` into a .part).
+            COMFYUI_MODEL_SET: |
+                diffusion_models/z_image_turbo_int8_convrot.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/diffusion_models/z_image_turbo_int8_convrot.safetensors|be517ebd47c912a5626a588e1aeea43e6be4a43c0cdcd2b48a2a780d9f358635
+                text_encoders/qwen_3_4b_fp8_mixed.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors|72450b19758172c5a7273cf7de729d1c17e7f434a104a00167624cba94f68f15
+                vae/ae.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/vae/ae.safetensors|afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38
         env_accept:
             - name: COMFYUI_MODEL_URL
               description: "Checkpoint download URL for first boot (default: the SD1.5 fp16 checkpoint this candy is proven with)."
@@ -28,6 +39,8 @@ comfyui:
               description: "sha256 of that checkpoint; the first-boot download is verified against it before the server starts."
             - name: COMFYUI_MODEL
               description: "File name the checkpoint is stored as, under models/checkpoints (default: v1-5-pruned-emaonly-fp16.safetensors)."
+            - name: COMFYUI_MODEL_SET
+              description: "Extra model files fetched on first boot: one `subdir/filename|url|sha256` per line (default: the quantized Z-Image-Turbo trio). Set to empty to fetch none."
         distro:
             arch:
                 package:
@@ -81,6 +94,30 @@ comfyui:
                   curl -fL --continue-at - --output "${CKPT}.part" "${COMFYUI_MODEL_URL:?COMFYUI_MODEL_URL must be declared by the candy or set per deploy}"
                   echo "${COMFYUI_MODEL_SHA256:?COMFYUI_MODEL_SHA256 must be declared by the candy or set per deploy}  ${CKPT}.part" | sha256sum -c -
                   mv "${CKPT}.part" "${CKPT}"
+                fi
+                # The MODEL SET runs in the BACKGROUND, deliberately: it is ~12 GB, and doing it
+                # before the server starts would push every cold boot past the window this bed and
+                # its callers allow for a first response. ComfyUI only needs these files when a
+                # workflow references them, so the server comes up first and the weights land
+                # behind it. Same discipline as the checkpoint: sha256 before the move, .part
+                # never reused.
+                if [ -n "${COMFYUI_MODEL_SET:-}" ]; then
+                  (
+                    printf '%s\n' "${COMFYUI_MODEL_SET}" | while IFS='|' read -r rel url sha; do
+                      [ -n "${rel:-}" ] || continue
+                      DEST="${BASE}/models/${rel}"
+                      mkdir -p "$(dirname "${DEST}")"
+                      if [ ! -s "${DEST}" ]; then
+                        echo "fetching ${rel}"
+                        curl -fL --continue-at - --output "${DEST}.part" "${url}" || { echo "FAILED ${rel}" >&2; continue; }
+                        if [ -n "${sha:-}" ]; then
+                          printf '%s  %s\n' "${sha}" "${DEST}.part" | sha256sum -c - || { echo "SHA MISMATCH ${rel}" >&2; rm -f "${DEST}.part"; continue; }
+                        fi
+                        mv "${DEST}.part" "${DEST}"
+                      fi
+                    done
+                  ) > "${BASE}/model-set-fetch.log" 2>&1 &
+                  echo "model set fetching in background (log: ${BASE}/model-set-fetch.log)"
                 fi
                 exec python /opt/comfyui/main.py --listen 0.0.0.0 --port 8188 \
                   --enable-manager --base-directory "${BASE}"
@@ -145,6 +182,32 @@ comfyui:
                 set -eu
                 test -n "$COMFYUI_MODEL"
                 test -s "$HOME/ComfyUI/models/checkpoints/$COMFYUI_MODEL"
+              exit_status: 0
+
+            - check: every file the declared Z-Image model SET names is present in the state volume
+              id: comfyui-model-set-in-volume
+              context:
+                - runtime
+              # A heredoc, NOT a pipe: `while ... | ` runs the loop in a subshell, so a failure
+              # counted inside it would be invisible to this step's exit status (a green over a
+              # missing 12 GB of weights).
+              command: |
+                set -eu
+                if [ -z "${COMFYUI_MODEL_SET:-}" ]; then
+                  echo "no model set declared; nothing to verify"
+                  exit 0
+                fi
+                fail=0
+                while IFS='|' read -r rel url sha; do
+                  [ -n "${rel:-}" ] || continue
+                  if [ ! -s "$HOME/ComfyUI/models/${rel}" ]; then
+                    echo "missing model file: ${rel}" >&2
+                    fail=1
+                  fi
+                done <<EOF
+                ${COMFYUI_MODEL_SET}
+                EOF
+                [ "$fail" = 0 ]
               exit_status: 0
 
 
