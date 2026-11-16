@@ -29,10 +29,10 @@ comfyui:
             # Verified at the boundary: every file is sha256-checked before it is moved into
             # place. A partial download IS reused: `--continue-at -` resumes into the same .part, and the
             # file is only renamed into place after its sha256 verifies.
-            COMFYUI_MODEL_SET: |
-                diffusion_models/z_image_turbo_int8_convrot.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/diffusion_models/z_image_turbo_int8_convrot.safetensors|be517ebd47c912a5626a588e1aeea43e6be4a43c0cdcd2b48a2a780d9f358635
-                text_encoders/qwen_3_4b_fp8_mixed.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors|72450b19758172c5a7273cf7de729d1c17e7f434a104a00167624cba94f68f15
-                vae/ae.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/vae/ae.safetensors|afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38
+            # ONE LINE, with \n escapes, never a YAML block scalar: the value is substituted
+            # textually into the emitted Containerfile, where a real newline becomes its own
+            # Dockerfile line and the build dies with "unknown instruction: <modelpath>".
+            COMFYUI_MODEL_SET: "diffusion_models/z_image_turbo_int8_convrot.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/diffusion_models/z_image_turbo_int8_convrot.safetensors|be517ebd47c912a5626a588e1aeea43e6be4a43c0cdcd2b48a2a780d9f358635\ntext_encoders/qwen_3_4b_fp8_mixed.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors|72450b19758172c5a7273cf7de729d1c17e7f434a104a00167624cba94f68f15\nvae/ae.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/vae/ae.safetensors|afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38"
         env_accept:
             - name: COMFYUI_MODEL_URL
               description: "Checkpoint download URL for first boot (default: the SD1.5 fp16 checkpoint this candy is proven with)."
@@ -117,7 +117,7 @@ comfyui:
                 # move, and a .part is RESUMED (--continue-at -) rather than discarded.
                 if [ -n "${COMFYUI_MODEL_SET:-}" ]; then
                   (
-                    printf '%s\n' "${COMFYUI_MODEL_SET}" | while IFS='|' read -r rel url sha; do
+                    printf '%b\n' "${COMFYUI_MODEL_SET}" | while IFS='|' read -r rel url sha; do
                       [ -n "${rel:-}" ] || continue
                       DEST="${BASE}/models/${rel}"
                       mkdir -p "$(dirname "${DEST}")"
@@ -231,9 +231,7 @@ comfyui:
                     echo "missing model file: ${rel}" >&2
                     fail=1
                   fi
-                done <<EOF
-                ${COMFYUI_MODEL_SET}
-                EOF
+                done < <(printf '%b\n' "${COMFYUI_MODEL_SET}")
                 [ "$fail" = 0 ]
               exit_status: 0
 
