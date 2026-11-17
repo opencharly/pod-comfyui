@@ -79,6 +79,15 @@ comfyui:
                 git describe --tags --always > .charly-ref
                 cat .charly-ref
               run_as: root
+            - run: write the ONE model-fetch helper both the launcher and the fetch script source
+              write: /opt/comfyui/fetch-lib.sh
+              mode: "0644"
+              run_as: root
+              content: |
+                # Sourced by start-comfyui.sh (first-boot checkpoint) and fetch-model-set.sh
+                # (the declared set). One implementation, so a fix to the resume/verify/retry
+                # policy cannot land in one caller and miss the other.
+                . /opt/comfyui/fetch-lib.sh
             - run: write the model-set fetch as its OWN SCRIPT, launched with setsid
               write: /opt/comfyui/fetch-model-set.sh
               mode: "0755"
@@ -96,17 +105,7 @@ comfyui:
                 exec >> "${LOG}" 2>&1
                 echo "=== fetch start $(date -u +%FT%TZ) ==="
 
-                fetch_verified() {
-                  _dest="$1"; _url="$2"; _sha="$3"
-                  if [ -s "${_dest}" ]; then return 0; fi
-                  curl -fL --continue-at - --output "${_dest}.part" "${_url}" \
-                    || { echo "FAILED ${_dest}" >&2; rm -f "${_dest}.part"; return 1; }
-                  if [ -n "${_sha}" ]; then
-                    printf '%s  %s\n' "${_sha}" "${_dest}.part" | sha256sum -c - >/dev/null \
-                      || { echo "SHA MISMATCH ${_dest}" >&2; rm -f "${_dest}.part"; return 1; }
-                  fi
-                  mv "${_dest}.part" "${_dest}"
-                }
+                . /opt/comfyui/fetch-lib.sh
 
                 while IFS='|' read -r rel url sha; do
                   [ -n "${rel:-}" ] || continue
@@ -152,6 +151,7 @@ comfyui:
                 # so the 335 MB VAE arrives in well under this; the bound exists only to turn a
                 # dead fetch into a reported failure rather than an indefinite wait. Safe to
                 # loop here because this runs as a SCRIPT, not as an inline assert-only step.
+                bound=$(cat "${BASE}/model-set.bound" 2>/dev/null || echo 900)
                 waited=0
                 found=0
                 while :; do
@@ -163,7 +163,7 @@ comfyui:
                     fi
                   done < "${BASE}/model-set.manifest"
                   [ "${found}" -gt 0 ] && break
-                  [ "${waited}" -ge 600 ] && break
+                  [ "${waited}" -ge "${bound}" ] && break
                   sleep 10
                   waited=$((waited + 10))
                 done
