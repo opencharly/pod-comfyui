@@ -33,6 +33,12 @@ comfyui:
             # textually into the emitted Containerfile, where a real newline becomes its own
             # Dockerfile line and the build dies with "unknown instruction: <modelpath>".
             COMFYUI_MODEL_SET: 'diffusion_models/z_image_turbo_int8_convrot.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/diffusion_models/z_image_turbo_int8_convrot.safetensors|be517ebd47c912a5626a588e1aeea43e6be4a43c0cdcd2b48a2a780d9f358635\ntext_encoders/qwen_3_4b_fp8_mixed.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors|72450b19758172c5a7273cf7de729d1c17e7f434a104a00167624cba94f68f15\nvae/ae.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/vae/ae.safetensors|afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38'
+            # The model-set wait bound. Declared HERE, not as a shell local: an assert-only
+            # check resolves only the runner's auto-exported variables, and a shell local makes
+            # the whole assertion DEAD. 12 GB at a pessimistic 10 Mbit/s is ~2.7 h, so the
+            # default is generous; it exists to turn a hung fetch into a FAILURE, not to police
+            # a slow link.
+            COMFYUI_MODEL_SET_WAIT_SECS: "7200"
         env_accept:
             - name: COMFYUI_MODEL_URL
               description: "Checkpoint download URL for first boot (default: the SD1.5 fp16 checkpoint this candy is proven with)."
@@ -214,23 +220,18 @@ comfyui:
                 # The fetch runs in the BACKGROUND so a ~12 GB download cannot delay boot, which
                 # means this check could otherwise observe the volume mid-fetch and report a
                 # missing file that is simply still downloading. Wait for the completion marker
-                # the fetch writes as its last act (bounded by MODEL_SET_WAIT_SECS, default 7200s, then
+                # the fetch writes as its last act (bounded by COMFYUI_MODEL_SET_WAIT_SECS, default 7200s, then
                 # it is a real failure).
-                # Named, not bare: the wait is bounded by the set's own size rather than by a
-                # number that looks arbitrary. 12 GB at a pessimistic 10 Mbit/s is ~2.7 h, so the
-                # bound is deliberately generous; it exists to turn a hung fetch into a FAILURE
-                # rather than an indefinite hang, not to police a slow link. Override with
-                # COMFYUI_MODEL_SET_WAIT_SECS on a slow host.
-                MODEL_SET_WAIT_SECS="${COMFYUI_MODEL_SET_WAIT_SECS:-7200}"
-                MODEL_SET_POLL_SECS=5
+                # The bound is a CANDY ENV VAR (auto-exported, so it resolves here); a shell
+                # local would make this assertion DEAD.
                 waited=0
                 while [ ! -e "$HOME/ComfyUI/model-set.done" ]; do
-                  if [ "$waited" -ge "$MODEL_SET_WAIT_SECS" ]; then
-                    echo "model set fetch did not complete within ${MODEL_SET_WAIT_SECS}s" >&2
+                  if [ "$waited" -ge "$COMFYUI_MODEL_SET_WAIT_SECS" ]; then
+                    echo "model set fetch did not complete within ${COMFYUI_MODEL_SET_WAIT_SECS}s" >&2
                     exit 1
                   fi
-                  sleep "$MODEL_SET_POLL_SECS"
-                  waited=$((waited + MODEL_SET_POLL_SECS))
+                  sleep 5
+                  waited=$((waited + 5))
                 done
                 fail=0
                 # A temp file, NOT `<(...)`: this body runs under /bin/sh, which has no process
