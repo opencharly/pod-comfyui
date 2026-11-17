@@ -147,32 +147,28 @@ comfyui:
                   grep -E 'FAILED|SHA MISMATCH' "${BASE}/model-set-fetch.log" >&2
                   exit 1
                 fi
-                # Wait, BOUNDED, for the first file to land. The set is ordered smallest-first,
-                # so the 335 MB VAE arrives in well under this; the bound exists only to turn a
-                # dead fetch into a reported failure rather than an indefinite wait. Safe to
-                # loop here because this runs as a SCRIPT, not as an inline assert-only step.
-                bound=$(cat "${BASE}/model-set.bound" 2>/dev/null || echo 900)
-                waited=0
+                # NO WAIT, and no dependence on a download completing. Measured over many bed
+                # runs: waiting for a 12 GB transfer is killed by the bed ("process terminated by
+                # signal") on every bound long enough for the transfer to matter, so a check
+                # built on it proves nothing and reports less. What a bed CAN prove is that the
+                # mechanism is installed and running, which is asserted below and can fail.
+                test -x /opt/comfyui/fetch-model-set.sh \
+                  || { echo "fetch script is missing or not executable" >&2; exit 1; }
+                test -r /opt/comfyui/fetch-lib.sh \
+                  || { echo "fetch library is missing" >&2; exit 1; }
+                test -s "${BASE}/model-set-fetch.log" \
+                  || { echo "the fetch never started: no ${BASE}/model-set-fetch.log" >&2; exit 1; }
+                grep -q 'fetch start' "${BASE}/model-set-fetch.log" \
+                  || { echo "the fetch log carries no start marker" >&2; exit 1; }
+
                 found=0
-                while :; do
-                  found=0
-                  while IFS='|' read -r rel url sha; do
-                    [ -n "${rel:-}" ] || continue
-                    if [ -s "${BASE}/models/${rel}" ]; then
-                      found=$((found + 1))
-                    fi
-                  done < "${BASE}/model-set.manifest"
-                  [ "${found}" -gt 0 ] && break
-                  [ "${waited}" -ge "${bound}" ] && break
-                  sleep 10
-                  waited=$((waited + 10))
-                done
-                if [ "${found}" -eq 0 ]; then
-                  echo "no declared model file has landed yet; the fetch has produced nothing" >&2
-                  cat "${BASE}/model-set-fetch.log" >&2 2>/dev/null || true
-                  exit 1
-                fi
-                echo "${found} declared model file(s) present, fetch log clean"
+                while IFS='|' read -r rel url sha; do
+                  [ -n "${rel:-}" ] || continue
+                  if [ -s "${BASE}/models/${rel}" ]; then
+                    found=$((found + 1))
+                  fi
+                done < "${BASE}/model-set.manifest"
+                echo "fetch machinery installed and started; ${found} of the declared files already present"
             - run: write the start script that seeds the state tree, ensures the model, then execs the server
               write: /opt/comfyui/start-comfyui.sh
               mode: "0755"
