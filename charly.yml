@@ -139,6 +139,11 @@ comfyui:
                 # workflow references them, so the server comes up first and the weights land
                 # behind it. Same discipline as the checkpoint: sha256 verified before the
                 # move, and a .part is RESUMED (--continue-at -) rather than discarded.
+                # The DECLARED set and its wait bound are written to files at launch, so the
+                # assert-only check can read them WITHOUT a braced reference to a candy env
+                # var: an unresolvable ${VAR} makes the step SKIP, and a skip reads green.
+                printf '%b\n' "${COMFYUI_MODEL_SET:-}" > "${BASE}/model-set.manifest"
+                printf '%s\n' "${COMFYUI_MODEL_SET_WAIT_SECS:-7200}" > "${BASE}/model-set.bound"
                 if [ -n "${COMFYUI_MODEL_SET:-}" ]; then
                   (
                     printf '%b\n' "${COMFYUI_MODEL_SET}" | while IFS='|' read -r rel url sha; do
@@ -231,21 +236,30 @@ comfyui:
               # missing 12 GB of weights).
               command: |
                 set -eu
-                if [ -z "${COMFYUI_MODEL_SET:-}" ]; then
+                # Reads FILES, never a candy env var: an unresolvable braced reference makes
+                # this assert-only step SKIP, and a skipped check reads green while proving
+                # nothing (measured: the runner reported the candy env var as unresolved).
+                if [ ! -s "$HOME/ComfyUI/model-set.manifest" ]; then
+                  echo "no model-set manifest at $HOME/ComfyUI/model-set.manifest" >&2
+                  exit 1
+                fi
+                if [ ! -s "$HOME/ComfyUI/model-set.manifest" ] || ! grep -q . "$HOME/ComfyUI/model-set.manifest"; then
                   echo "no model set declared; nothing to verify"
                   exit 0
                 fi
                 # The fetch runs in the BACKGROUND so a ~12 GB download cannot delay boot, which
                 # means this check could otherwise observe the volume mid-fetch and report a
                 # missing file that is simply still downloading. Wait for the completion marker
-                # the fetch writes as its last act (bounded by COMFYUI_MODEL_SET_WAIT_SECS, default 7200s, then
+                # the fetch writes as its last act (bounded by the value the launch wrote to
+                # model-set.bound, default 7200s, then
                 # it is a real failure).
                 # The bound is a CANDY ENV VAR (auto-exported, so it resolves here); a shell
                 # local would make this assertion DEAD.
+                BOUND=$(cat "$HOME/ComfyUI/model-set.bound" 2>/dev/null || echo 7200)
                 waited=0
                 while [ ! -e "$HOME/ComfyUI/model-set.done" ]; do
-                  if [ "$waited" -ge "$COMFYUI_MODEL_SET_WAIT_SECS" ]; then
-                    echo "model set fetch did not complete within ${COMFYUI_MODEL_SET_WAIT_SECS}s" >&2
+                  if [ "$waited" -ge "$BOUND" ]; then
+                    echo "model set fetch did not complete within ${BOUND}s" >&2
                     exit 1
                   fi
                   sleep 5
@@ -256,7 +270,7 @@ comfyui:
                 # substitution, and NOT a pipe, because a piped loop runs in a subshell and its
                 # `fail` would be invisible to this step's exit status.
                 _set_list=$(mktemp)
-                printf '%b\n' "${COMFYUI_MODEL_SET}" > "${_set_list}"
+                cp "$HOME/ComfyUI/model-set.manifest" "${_set_list}"
                 while IFS='|' read -r rel url sha; do
                   [ -n "${rel:-}" ] || continue
                   if [ ! -s "$HOME/ComfyUI/models/${rel}" ]; then
