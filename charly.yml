@@ -246,6 +246,10 @@ comfyui:
                   fi
                 done < "${_set_list}"
                 rm -f "${_set_list}"
+                if [ "$fail" != 0 ]; then
+                  echo "--- model-set fetch log ---" >&2
+                  cat "$HOME/ComfyUI/model-set-fetch.log" >&2 2>/dev/null || echo "(no fetch log)" >&2
+                fi
                 [ "$fail" = 0 ]
               exit_status: 0
 
