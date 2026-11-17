@@ -148,13 +148,25 @@ comfyui:
                   grep -E 'FAILED|SHA MISMATCH' "${BASE}/model-set-fetch.log" >&2
                   exit 1
                 fi
+                # Wait, BOUNDED, for the first file to land. The set is ordered smallest-first,
+                # so the 335 MB VAE arrives in well under this; the bound exists only to turn a
+                # dead fetch into a reported failure rather than an indefinite wait. Safe to
+                # loop here because this runs as a SCRIPT, not as an inline assert-only step.
+                waited=0
                 found=0
-                while IFS='|' read -r rel url sha; do
-                  [ -n "${rel:-}" ] || continue
-                  if [ -s "${BASE}/models/${rel}" ]; then
-                    found=$((found + 1))
-                  fi
-                done < "${BASE}/model-set.manifest"
+                while :; do
+                  found=0
+                  while IFS='|' read -r rel url sha; do
+                    [ -n "${rel:-}" ] || continue
+                    if [ -s "${BASE}/models/${rel}" ]; then
+                      found=$((found + 1))
+                    fi
+                  done < "${BASE}/model-set.manifest"
+                  [ "${found}" -gt 0 ] && break
+                  [ "${waited}" -ge 600 ] && break
+                  sleep 10
+                  waited=$((waited + 10))
+                done
                 if [ "${found}" -eq 0 ]; then
                   echo "no declared model file has landed yet; the fetch has produced nothing" >&2
                   cat "${BASE}/model-set-fetch.log" >&2 2>/dev/null || true
