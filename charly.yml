@@ -79,6 +79,40 @@ comfyui:
                 git describe --tags --always > .charly-ref
                 cat .charly-ref
               run_as: root
+            - run: write the ONE model-fetch helper both the launcher and the fetch script source
+              write: /opt/comfyui/fetch-lib.sh
+              mode: "0644"
+              run_as: root
+              content: |
+                fetch_verified() {
+                  _dest="$1"; _url="$2"; _sha="$3"
+                  if [ -s "${_dest}" ]; then return 0; fi
+                  _try=0
+                  while [ "${_try}" -lt 2 ]; do
+                    _try=$((_try + 1))
+                    curl -fL --continue-at - --output "${_dest}.part" "${_url}" \
+                      || { echo "FAILED ${_dest} (attempt ${_try})" >&2; rm -f "${_dest}.part"; return 1; }
+                    if [ -z "${_sha}" ]; then break; fi
+                    if printf '%s  %s\n' "${_sha}" "${_dest}.part" | sha256sum -c - >/dev/null; then
+                      break
+                    fi
+                    # A RESUMED transfer can be corrupt: the resumed bytes may not match what the
+                    # origin served (a redirect target that ignores Range, a changed object). The
+                    # first version of this deleted the .part and gave up, so a 6.2 GB file that
+                    # failed verification never landed at all. Discard and retry ONCE from scratch
+                    # before declaring failure — and say which attempt failed and why.
+                    echo "SHA MISMATCH ${_dest} (attempt ${_try}; discarding the partial file)" >&2
+                    rm -f "${_dest}.part"
+                    if [ "${_try}" -ge 2 ]; then
+                      echo "GIVING UP ${_dest}: verification failed on a clean re-download" >&2
+                      return 1
+                    fi
+                  done
+                  if [ -n "${_sha}" ] && ! printf '%s  %s\n' "${_sha}" "${_dest}.part" | sha256sum -c - >/dev/null 2>&1; then
+                    return 1
+                  fi
+                  mv "${_dest}.part" "${_dest}"
+                }
             - run: write the model-set fetch as its OWN SCRIPT, launched with setsid
               write: /opt/comfyui/fetch-model-set.sh
               mode: "0755"
@@ -96,17 +130,7 @@ comfyui:
                 exec >> "${LOG}" 2>&1
                 echo "=== fetch start $(date -u +%FT%TZ) ==="
 
-                fetch_verified() {
-                  _dest="$1"; _url="$2"; _sha="$3"
-                  if [ -s "${_dest}" ]; then return 0; fi
-                  curl -fL --continue-at - --output "${_dest}.part" "${_url}" \
-                    || { echo "FAILED ${_dest}" >&2; rm -f "${_dest}.part"; return 1; }
-                  if [ -n "${_sha}" ]; then
-                    printf '%s  %s\n' "${_sha}" "${_dest}.part" | sha256sum -c - >/dev/null \
-                      || { echo "SHA MISMATCH ${_dest}" >&2; rm -f "${_dest}.part"; return 1; }
-                  fi
-                  mv "${_dest}.part" "${_dest}"
-                }
+                . /opt/comfyui/fetch-lib.sh
 
                 while IFS='|' read -r rel url sha; do
                   [ -n "${rel:-}" ] || continue
@@ -198,35 +222,7 @@ comfyui:
                 # .part, verify the sha256, then rename into place — extracted because the
                 # single checkpoint and the model set were two copies of this same sequence
                 # (R2), and a second copy drifts.
-                fetch_verified() {
-                  _dest="$1"; _url="$2"; _sha="$3"
-                  if [ -s "${_dest}" ]; then return 0; fi
-                  _try=0
-                  while [ "${_try}" -lt 2 ]; do
-                    _try=$((_try + 1))
-                    curl -fL --continue-at - --output "${_dest}.part" "${_url}" \
-                      || { echo "FAILED ${_dest} (attempt ${_try})" >&2; rm -f "${_dest}.part"; return 1; }
-                    if [ -z "${_sha}" ]; then break; fi
-                    if printf '%s  %s\n' "${_sha}" "${_dest}.part" | sha256sum -c - >/dev/null; then
-                      break
-                    fi
-                    # A RESUMED transfer can be corrupt: the resumed bytes may not match what the
-                    # origin served (a redirect target that ignores Range, a changed object). The
-                    # first version of this deleted the .part and gave up, so a 6.2 GB file that
-                    # failed verification never landed at all. Discard and retry ONCE from scratch
-                    # before declaring failure — and say which attempt failed and why.
-                    echo "SHA MISMATCH ${_dest} (attempt ${_try}; discarding the partial file)" >&2
-                    rm -f "${_dest}.part"
-                    if [ "${_try}" -ge 2 ]; then
-                      echo "GIVING UP ${_dest}: verification failed on a clean re-download" >&2
-                      return 1
-                    fi
-                  done
-                  if [ -n "${_sha}" ] && ! printf '%s  %s\n' "${_sha}" "${_dest}.part" | sha256sum -c - >/dev/null 2>&1; then
-                    return 1
-                  fi
-                  mv "${_dest}.part" "${_dest}"
-                }
+                . /opt/comfyui/fetch-lib.sh
                 CKPT="${BASE}/models/checkpoints/${COMFYUI_MODEL}"
                 fetch_verified "${CKPT}" \
                   "${COMFYUI_MODEL_URL:?COMFYUI_MODEL_URL must be declared by the candy or set per deploy}" \
