@@ -79,6 +79,64 @@ comfyui:
                 git describe --tags --always > .charly-ref
                 cat .charly-ref
               run_as: root
+            - run: write the model-set verification as a SCRIPT — an assert-only step with any
+                shell variable is DEAD, so the logic cannot live inline
+              write: /opt/comfyui/check-model-set.sh
+              mode: "0755"
+              run_as: root
+              content: |
+                #!/bin/bash
+                set -eu
+                # Reads FILES, never a candy env var: an unresolvable braced reference makes
+                # this assert-only step SKIP, and a skipped check reads green while proving
+                # nothing (measured: the runner reported the candy env var as unresolved).
+                if [ ! -s "$HOME/ComfyUI/model-set.manifest" ]; then
+                  echo "no model-set manifest at $HOME/ComfyUI/model-set.manifest" >&2
+                  exit 1
+                fi
+                if [ ! -s "$HOME/ComfyUI/model-set.manifest" ] || ! grep -q . "$HOME/ComfyUI/model-set.manifest"; then
+                  echo "no model set declared; nothing to verify"
+                  exit 0
+                fi
+                # The fetch runs in the BACKGROUND so a ~12 GB download cannot delay boot, which
+                # means this check could otherwise observe the volume mid-fetch and report a
+                # missing file that is simply still downloading. Wait for the completion marker
+                # the fetch writes as its last act (bounded by the value the launch wrote to
+                # model-set.bound, default 7200s, then
+                # it is a real failure).
+                # The bound is read from the FILE the launch wrote, not from a candy env var
+                # and not from a shell local: an unresolved braced reference would make this
+                # assert-only step SKIP (which reads green), and a shell local makes it DEAD.
+                BOUND=$(cat "$HOME/ComfyUI/model-set.bound" 2>/dev/null || echo 7200)
+                waited=0
+                while [ ! -e "$HOME/ComfyUI/model-set.done" ]; do
+                  if [ "$waited" -ge "$BOUND" ]; then
+                    echo "model set fetch did not complete within ${BOUND}s" >&2
+                    exit 1
+                  fi
+                  sleep 5
+                  waited=$((waited + 5))
+                done
+                fail=0
+                # A temp file, NOT `<(...)`: this body runs under /bin/sh, which has no process
+                # substitution, and NOT a pipe, because a piped loop runs in a subshell and its
+                # `fail` would be invisible to this step's exit status.
+                _set_list=$(mktemp)
+                cp "$HOME/ComfyUI/model-set.manifest" "${_set_list}"
+                while IFS='|' read -r rel url sha; do
+                  [ -n "${rel:-}" ] || continue
+                  if [ ! -s "$HOME/ComfyUI/models/${rel}" ]; then
+                    echo "missing model file: ${rel}" >&2
+                    fail=1
+                  fi
+                done < "${_set_list}"
+                rm -f "${_set_list}"
+                if [ "$fail" != 0 ]; then
+                  echo "--- model-set fetch log ---" >&2
+                  cat "$HOME/ComfyUI/model-set-fetch.log" >&2 2>/dev/null || echo "(no fetch log)" >&2
+                fi
+                [ "$fail" = 0 ]
+                              exit_status: 0
             - run: write the start script that seeds the state tree, ensures the model, then execs the server
               write: /opt/comfyui/start-comfyui.sh
               mode: "0755"
@@ -231,60 +289,12 @@ comfyui:
               id: comfyui-model-set-in-volume
               context:
                 - runtime
-              # A heredoc, NOT a pipe: `while ... | ` runs the loop in a subshell, so a failure
-              # counted inside it would be invisible to this step's exit status (a green over a
-              # missing 12 GB of weights).
-              command: |
-                set -eu
-                # Reads FILES, never a candy env var: an unresolvable braced reference makes
-                # this assert-only step SKIP, and a skipped check reads green while proving
-                # nothing (measured: the runner reported the candy env var as unresolved).
-                if [ ! -s "$HOME/ComfyUI/model-set.manifest" ]; then
-                  echo "no model-set manifest at $HOME/ComfyUI/model-set.manifest" >&2
-                  exit 1
-                fi
-                if [ ! -s "$HOME/ComfyUI/model-set.manifest" ] || ! grep -q . "$HOME/ComfyUI/model-set.manifest"; then
-                  echo "no model set declared; nothing to verify"
-                  exit 0
-                fi
-                # The fetch runs in the BACKGROUND so a ~12 GB download cannot delay boot, which
-                # means this check could otherwise observe the volume mid-fetch and report a
-                # missing file that is simply still downloading. Wait for the completion marker
-                # the fetch writes as its last act (bounded by the value the launch wrote to
-                # model-set.bound, default 7200s, then
-                # it is a real failure).
-                # The bound is read from the FILE the launch wrote, not from a candy env var
-                # and not from a shell local: an unresolved braced reference would make this
-                # assert-only step SKIP (which reads green), and a shell local makes it DEAD.
-                BOUND=$(cat "$HOME/ComfyUI/model-set.bound" 2>/dev/null || echo 7200)
-                waited=0
-                while [ ! -e "$HOME/ComfyUI/model-set.done" ]; do
-                  if [ "$waited" -ge "$BOUND" ]; then
-                    echo "model set fetch did not complete within ${BOUND}s" >&2
-                    exit 1
-                  fi
-                  sleep 5
-                  waited=$((waited + 5))
-                done
-                fail=0
-                # A temp file, NOT `<(...)`: this body runs under /bin/sh, which has no process
-                # substitution, and NOT a pipe, because a piped loop runs in a subshell and its
-                # `fail` would be invisible to this step's exit status.
-                _set_list=$(mktemp)
-                cp "$HOME/ComfyUI/model-set.manifest" "${_set_list}"
-                while IFS='|' read -r rel url sha; do
-                  [ -n "${rel:-}" ] || continue
-                  if [ ! -s "$HOME/ComfyUI/models/${rel}" ]; then
-                    echo "missing model file: ${rel}" >&2
-                    fail=1
-                  fi
-                done < "${_set_list}"
-                rm -f "${_set_list}"
-                if [ "$fail" != 0 ]; then
-                  echo "--- model-set fetch log ---" >&2
-                  cat "$HOME/ComfyUI/model-set-fetch.log" >&2 2>/dev/null || echo "(no fetch log)" >&2
-                fi
-                [ "$fail" = 0 ]
+              # A SCRIPT, not an inline body. An assert-only step resolves only the runner's
+              # auto-exported variables, so EVERY shell variable — even one the step assigns
+              # itself, like `BOUND` — makes the assertion DEAD ("these names can never resolve
+              # here: BOUND"). The logic lives in a file the image bakes, and this step is one
+              # command with no variables of its own.
+              command: /opt/comfyui/check-model-set.sh
               exit_status: 0
 
 
