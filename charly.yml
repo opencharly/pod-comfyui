@@ -253,8 +253,9 @@ comfyui:
                 # the fetch writes as its last act (bounded by the value the launch wrote to
                 # model-set.bound, default 7200s, then
                 # it is a real failure).
-                # The bound is a CANDY ENV VAR (auto-exported, so it resolves here); a shell
-                # local would make this assertion DEAD.
+                # The bound is read from the FILE the launch wrote, not from a candy env var
+                # and not from a shell local: an unresolved braced reference would make this
+                # assert-only step SKIP (which reads green), and a shell local makes it DEAD.
                 BOUND=$(cat "$HOME/ComfyUI/model-set.bound" 2>/dev/null || echo 7200)
                 waited=0
                 while [ ! -e "$HOME/ComfyUI/model-set.done" ]; do
