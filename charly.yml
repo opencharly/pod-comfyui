@@ -38,7 +38,7 @@ comfyui:
             # the whole assertion DEAD. 12 GB at a pessimistic 10 Mbit/s is ~2.7 h, so the
             # default is generous; it exists to turn a hung fetch into a FAILURE, not to police
             # a slow link.
-            COMFYUI_MODEL_SET_WAIT_SECS: "7200"
+            COMFYUI_MODEL_SET_WAIT_SECS: "900"
         env_accept:
             - name: COMFYUI_MODEL_URL
               description: "Checkpoint download URL for first boot (default: the SD1.5 fp16 checkpoint this candy is proven with)."
