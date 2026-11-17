@@ -173,7 +173,6 @@ comfyui:
                   exit 1
                 fi
                 echo "${found} declared model file(s) present, fetch log clean"
-                              exit_status: 0
             - run: write the start script that seeds the state tree, ensures the model, then execs the server
               write: /opt/comfyui/start-comfyui.sh
               mode: "0755"
