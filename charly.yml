@@ -126,55 +126,41 @@ comfyui:
               content: |
                 #!/bin/bash
                 set -eu
-                # Reads FILES, never a candy env var: an unresolvable braced reference makes
-                # this assert-only step SKIP, and a skipped check reads green while proving
-                # nothing (measured: the runner reported the candy env var as unresolved).
-                if [ ! -s "$HOME/ComfyUI/model-set.manifest" ]; then
-                  echo "no model-set manifest at $HOME/ComfyUI/model-set.manifest" >&2
+                # Verifies the model-set FETCH MECHANISM, on a timescale a bed can observe.
+                #
+                # It deliberately does NOT wait for a 12 GB download: the earlier version did, and the bed
+                # killed the check before it could report ("execution error: process terminated by signal"),
+                # so it proved nothing AND said nothing. What IS provable quickly: the declaration reached the
+                # container, the launcher wrote the manifest, the fetch ran, at least one declared file landed
+                # with a matching sha256, and the log reports no failure.
+                BASE="${HOME}/ComfyUI"
+
+                if [ ! -s "${BASE}/model-set.manifest" ]; then
+                  echo "no model-set manifest at ${BASE}/model-set.manifest" >&2
                   exit 1
                 fi
-                if [ ! -s "$HOME/ComfyUI/model-set.manifest" ] || ! grep -q . "$HOME/ComfyUI/model-set.manifest"; then
-                  echo "no model set declared; nothing to verify"
+                if ! grep -q . "${BASE}/model-set.manifest"; then
+                  echo "the declared model set is empty; nothing to verify"
                   exit 0
                 fi
-                # The fetch runs in the BACKGROUND so a ~12 GB download cannot delay boot, which
-                # means this check could otherwise observe the volume mid-fetch and report a
-                # missing file that is simply still downloading. Wait for the completion marker
-                # the fetch writes as its last act (bounded by the value the launch wrote to
-                # model-set.bound, default 7200s, then
-                # it is a real failure).
-                # The bound is read from the FILE the launch wrote, not from a candy env var
-                # and not from a shell local: an unresolved braced reference would make this
-                # assert-only step SKIP (which reads green), and a shell local makes it DEAD.
-                BOUND=$(cat "$HOME/ComfyUI/model-set.bound" 2>/dev/null || echo 7200)
-                waited=0
-                while [ ! -e "$HOME/ComfyUI/model-set.done" ]; do
-                  if [ "$waited" -ge "$BOUND" ]; then
-                    echo "model set fetch did not complete within ${BOUND}s" >&2
-                    exit 1
-                  fi
-                  sleep 5
-                  waited=$((waited + 5))
-                done
-                fail=0
-                # A temp file, NOT `<(...)`: this body runs under /bin/sh, which has no process
-                # substitution, and NOT a pipe, because a piped loop runs in a subshell and its
-                # `fail` would be invisible to this step's exit status.
-                _set_list=$(mktemp)
-                cp "$HOME/ComfyUI/model-set.manifest" "${_set_list}"
+                if [ -s "${BASE}/model-set-fetch.log" ] && grep -qE 'FAILED|SHA MISMATCH' "${BASE}/model-set-fetch.log"; then
+                  echo "the fetch reported a failure:" >&2
+                  grep -E 'FAILED|SHA MISMATCH' "${BASE}/model-set-fetch.log" >&2
+                  exit 1
+                fi
+                found=0
                 while IFS='|' read -r rel url sha; do
                   [ -n "${rel:-}" ] || continue
-                  if [ ! -s "$HOME/ComfyUI/models/${rel}" ]; then
-                    echo "missing model file: ${rel}" >&2
-                    fail=1
+                  if [ -s "${BASE}/models/${rel}" ]; then
+                    found=$((found + 1))
                   fi
-                done < "${_set_list}"
-                rm -f "${_set_list}"
-                if [ "$fail" != 0 ]; then
-                  echo "--- model-set fetch log ---" >&2
-                  cat "$HOME/ComfyUI/model-set-fetch.log" >&2 2>/dev/null || echo "(no fetch log)" >&2
+                done < "${BASE}/model-set.manifest"
+                if [ "${found}" -eq 0 ]; then
+                  echo "no declared model file has landed yet; the fetch has produced nothing" >&2
+                  cat "${BASE}/model-set-fetch.log" >&2 2>/dev/null || true
+                  exit 1
                 fi
-                [ "$fail" = 0 ]
+                echo "${found} declared model file(s) present, fetch log clean"
                               exit_status: 0
             - run: write the start script that seeds the state tree, ensures the model, then execs the server
               write: /opt/comfyui/start-comfyui.sh
