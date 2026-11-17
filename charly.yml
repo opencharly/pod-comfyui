@@ -35,9 +35,13 @@ comfyui:
             COMFYUI_MODEL_SET: 'vae/ae.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/vae/ae.safetensors|afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38\ntext_encoders/qwen_3_4b_fp8_mixed.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors|72450b19758172c5a7273cf7de729d1c17e7f434a104a00167624cba94f68f15\ndiffusion_models/z_image_turbo_int8_convrot.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/diffusion_models/z_image_turbo_int8_convrot.safetensors|be517ebd47c912a5626a588e1aeea43e6be4a43c0cdcd2b48a2a780d9f358635'
             # The model-set wait bound. Declared HERE, not as a shell local: an assert-only
             # check resolves only the runner's auto-exported variables, and a shell local makes
-            # the whole assertion DEAD. 12 GB at a pessimistic 10 Mbit/s is ~2.7 h, so the
-            # default is generous; it exists to turn a hung fetch into a FAILURE, not to police
-            # a slow link.
+            # the whole assertion DEAD.
+            #
+            # 600s is the BED budget, not a network budget: a full 12 GB set at ~10 Mbit/s
+            # would take hours, and any bound long enough to cover that is longer than the bed
+            # allows, so the check is killed before it can report. The set is therefore ordered
+            # smallest-first and 600s covers the 335 MB VAE comfortably; the bound exists to
+            # turn a hung fetch into a FAILURE, not to wait out the whole set.
             COMFYUI_MODEL_SET_WAIT_SECS: "600"
         env_accept:
             - name: COMFYUI_MODEL_URL
