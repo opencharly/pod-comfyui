@@ -13,6 +13,9 @@ comfyui:
             - '@github.com/opencharly/layer-supervisord:v2026.271.1817'
         env:
             COMFYUI_REF: v0.45.3
+            # GB of VRAM DynamicVRAM keeps completely free and unused, counting other apps.
+            # Overridable per deploy (`charly config comfyui -e COMFYUI_VRAM_HEADROOM=2`).
+            COMFYUI_VRAM_HEADROOM: "1"
             # The checkpoint is fetched at FIRST BOOT, never baked into the image. These two are the
             # download inputs; the defaults are the artifact this candy was proven with, and both are
             # overridable per deploy (`charly config comfyui -e COMFYUI_MODEL_URL=…`). They are
@@ -251,8 +254,29 @@ comfyui:
                 else
                   touch "${BASE}/model-set.done"
                 fi
+                # VRAM is used while a generation runs and released when it ends. Three flags,
+                # each verified against ComfyUI v0.45.3's own comfy/cli_args.py:
+                #
+                #   --enable-dynamic-vram   "Enable dynamic VRAM on systems where it's not enabled
+                #                           by default." It IS the default there -- enables_dynamic_vram()
+                #                           returns true unless --disable-dynamic-vram/--highvram/
+                #                           --gpu-only/--novram/--cpu is passed -- so this flag is passed
+                #                           EXPLICITLY only to pin the intent against a future default
+                #                           flip. It changes nothing today.
+                #   --disable-smart-memory  "Force ComfyUI to agressively offload to regular ram
+                #                           instead of keeping models in vram when it can." This is the
+                #                           flag that stops an idle server pinning the weights: measured
+                #                           on this image, the default launch held 10,954 MiB of VRAM
+                #                           with the server idle at 0.1% CPU for 13 hours.
+                #   --vram-headroom N       "the amount of vram in GB for DynamicVRAM to maintain as
+                #                           extra headroom above default ... ComfyUI will try and keep
+                #                           this much VRAM completely free and unused, even counting
+                #                           VRAM from other apps." This is the lever that keeps room
+                #                           for everything else on a shared GPU.
                 exec python /opt/comfyui/main.py --listen 0.0.0.0 --port 8188 \
-                  --enable-manager --base-directory "${BASE}"
+                  --enable-manager --base-directory "${BASE}" \
+                  --enable-dynamic-vram --disable-smart-memory \
+                  --vram-headroom "${COMFYUI_VRAM_HEADROOM}"
             - check: the image records the ComfyUI release tag it was built from
               id: comfyui-pinned-ref
               # No authored variable here on purpose: a braced ${VAR} the check context cannot
