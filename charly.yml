@@ -79,6 +79,45 @@ comfyui:
                 git describe --tags --always > .charly-ref
                 cat .charly-ref
               run_as: root
+            - run: write the model-set fetch as its OWN SCRIPT, launched with setsid
+              write: /opt/comfyui/fetch-model-set.sh
+              mode: "0755"
+              run_as: root
+              content: |
+                #!/bin/bash
+                # Launched with setsid from start-comfyui.sh. Backgrounding with `&` alone put
+                # this in the start script's process group, and it was KILLED when that script
+                # exec'd the server — which is why the download never completed and
+                # model-set.done never appeared. setsid gives it its own session, so it
+                # outlives the launcher.
+                set -u
+                BASE="${HOME}/ComfyUI"
+                LOG="${BASE}/model-set-fetch.log"
+                exec >> "${LOG}" 2>&1
+                echo "=== fetch start $(date -u +%FT%TZ) ==="
+
+                fetch_verified() {
+                  _dest="$1"; _url="$2"; _sha="$3"
+                  if [ -s "${_dest}" ]; then return 0; fi
+                  curl -fL --continue-at - --output "${_dest}.part" "${_url}" \
+                    || { echo "FAILED ${_dest}" >&2; rm -f "${_dest}.part"; return 1; }
+                  if [ -n "${_sha}" ]; then
+                    printf '%s  %s\n' "${_sha}" "${_dest}.part" | sha256sum -c - >/dev/null \
+                      || { echo "SHA MISMATCH ${_dest}" >&2; rm -f "${_dest}.part"; return 1; }
+                  fi
+                  mv "${_dest}.part" "${_dest}"
+                }
+
+                while IFS='|' read -r rel url sha; do
+                  [ -n "${rel:-}" ] || continue
+                  DEST="${BASE}/models/${rel}"
+                  mkdir -p "$(dirname "${DEST}")"
+                  echo "fetching ${rel}"
+                  fetch_verified "${DEST}" "${url}" "${sha:-}" || continue
+                done < "${BASE}/model-set.manifest"
+
+                touch "${BASE}/model-set.done"
+                echo "=== fetch done $(date -u +%FT%TZ) ==="
             - run: write the model-set verification as a SCRIPT — an assert-only step with any
                 shell variable is DEAD, so the logic cannot live inline
               write: /opt/comfyui/check-model-set.sh
@@ -203,22 +242,13 @@ comfyui:
                 printf '%b\n' "${COMFYUI_MODEL_SET:-}" > "${BASE}/model-set.manifest"
                 printf '%s\n' "${COMFYUI_MODEL_SET_WAIT_SECS:-7200}" > "${BASE}/model-set.bound"
                 if [ -n "${COMFYUI_MODEL_SET:-}" ]; then
-                  (
-                    printf '%b\n' "${COMFYUI_MODEL_SET}" | while IFS='|' read -r rel url sha; do
-                      [ -n "${rel:-}" ] || continue
-                      DEST="${BASE}/models/${rel}"
-                      mkdir -p "$(dirname "${DEST}")"
-                      echo "fetching ${rel}"
-                      fetch_verified "${DEST}" "${url}" "${sha:-}" || continue
-                    done
-                    # Completion marker INSIDE the backgrounded subshell, so it is written
-                    # only when every file has been attempted. The check waits for it, so it
-                    # cannot observe a half-fetched volume (R3: a race is root-fixed, not
-                    # hidden behind a sleep). The server still starts without waiting.
-                    touch "${BASE}/model-set.done"
-                  ) > "${BASE}/model-set-fetch.log" 2>&1 &
-
-                  echo "model set fetching in background (log: ${BASE}/model-set-fetch.log)"
+                  # setsid: its own session. `&` alone left this in the start script's process
+                  # group and it was killed when the script exec'd the server, so the download
+                  # never finished and model-set.done never appeared.
+                  setsid /opt/comfyui/fetch-model-set.sh > /dev/null 2>&1 &
+                  echo "model set fetching in its own session (log: ${BASE}/model-set-fetch.log)"
+                else
+                  touch "${BASE}/model-set.done"
                 fi
                 exec python /opt/comfyui/main.py --listen 0.0.0.0 --port 8188 \
                   --enable-manager --base-directory "${BASE}"
