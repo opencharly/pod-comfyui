@@ -312,7 +312,8 @@ comfyui:
                 test -s "$HOME/ComfyUI/models/checkpoints/$COMFYUI_MODEL"
               exit_status: 0
 
-            - check: every file the declared Z-Image model SET names is present in the state volume
+            - check: the declared Z-Image model set has started fetching, and the first file has
+                landed in the state volume — the mechanism is proven, not the whole set
               id: comfyui-model-set-in-volume
               context:
                 - runtime
