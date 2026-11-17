@@ -214,7 +214,8 @@ comfyui:
                 # The fetch runs in the BACKGROUND so a ~12 GB download cannot delay boot, which
                 # means this check could otherwise observe the volume mid-fetch and report a
                 # missing file that is simply still downloading. Wait for the completion marker
-                # the fetch writes as its last act (bounded: 20 min, then it is a real failure).
+                # the fetch writes as its last act (bounded by MODEL_SET_WAIT_SECS, default 7200s, then
+                # it is a real failure).
                 # Named, not bare: the wait is bounded by the set's own size rather than by a
                 # number that looks arbitrary. 12 GB at a pessimistic 10 Mbit/s is ~2.7 h, so the
                 # bound is deliberately generous; it exists to turn a hung fetch into a FAILURE
