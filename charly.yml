@@ -233,13 +233,19 @@ comfyui:
                   waited=$((waited + MODEL_SET_POLL_SECS))
                 done
                 fail=0
+                # A temp file, NOT `<(...)`: this body runs under /bin/sh, which has no process
+                # substitution, and NOT a pipe, because a piped loop runs in a subshell and its
+                # `fail` would be invisible to this step's exit status.
+                _set_list=$(mktemp)
+                printf '%b\n' "${COMFYUI_MODEL_SET}" > "${_set_list}"
                 while IFS='|' read -r rel url sha; do
                   [ -n "${rel:-}" ] || continue
                   if [ ! -s "$HOME/ComfyUI/models/${rel}" ]; then
                     echo "missing model file: ${rel}" >&2
                     fail=1
                   fi
-                done < <(printf '%b\n' "${COMFYUI_MODEL_SET}")
+                done < "${_set_list}"
+                rm -f "${_set_list}"
                 [ "$fail" = 0 ]
               exit_status: 0
 
