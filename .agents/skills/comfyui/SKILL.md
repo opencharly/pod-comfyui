@@ -75,9 +75,14 @@ After `charly start`:
 ## VRAM: used while generating, released when idle
 
 The launcher passes `--disable-smart-memory`, so the weights leave the card when a prompt
-finishes, and `--enable-dynamic-vram`, which pins the DynamicVRAM gate explicitly. That gate is
-default-on for this configuration, so the second flag changes no allocation today; it holds the
-intent if a future ComfyUI default flips. Measured on an RTX 4080 SUPER (16,376 MiB), one
+finishes. It does **not** pass `--enable-dynamic-vram`: that flag puts ComfyUI on its DynamicVRAM
+path, which streams the checkpoint into VRAM per prompt instead of making it resident — the
+container's own journal reports `Model BaseModel prepared for dynamic VRAM loading. 1639MB
+Staged.` on every prompt — and the `comfyui-vram-offload` check samples the whole device once per
+second and requires the per-prompt peak to rise by at least 1 GiB. Under streaming that sample
+read 4–420 MiB on a real GPU bed, so the check declared itself meaningless. The flag changed
+nothing about the offload mechanism (`--disable-smart-memory` is the mechanism), so it stays out.
+Measured on an RTX 4080 SUPER (16,376 MiB), one
 generation being CheckpointLoaderSimple → KSampler 4 steps → VAEDecode → SaveImage:
 
 | Reading | VRAM |
@@ -103,7 +108,7 @@ trivially, so it does not decide the idle footprint and must not be read as a me
 The flags themselves are asserted, not just described: the `comfyui-launch-flags` runtime check
 runs `/opt/comfyui/check-launch-flags.sh`, which isolates the `exec` line of the baked
 `start-comfyui.sh` (comments stripped, continuations joined) and fails naming any of
-`--enable-dynamic-vram`, `--disable-smart-memory`, `--vram-headroom` that is missing. A later
+`--disable-smart-memory`, `--vram-headroom` that is missing. A later
 edit that drops a flag from the launch line goes red there — otherwise the argument for carrying
 the flag would be a claim nothing in the image defends.
 

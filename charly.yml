@@ -369,8 +369,8 @@ comfyui:
                 # go green on itself while the launcher drifted underneath it.
                 #
                 # It isolates the LAUNCH COMMAND, never the whole file: the rationale comment block
-                # above the launch NAMES all three flags in prose, so a whole-file grep passes on a
-                # launcher that has already lost the flag (measured: `grep -q -- --enable-dynamic-vram`
+                # above the launch NAMES the flags in prose, so a whole-file grep passes on a
+                # launcher that has already lost one (measured: `grep -q -- --disable-smart-memory`
                 # exits 0 on a launch line that no longer passes it). Comments are stripped and the
                 # backslash continuations joined, so the assertion sees the one command supervisord runs.
                 LAUNCHER=/opt/comfyui/start-comfyui.sh
@@ -394,7 +394,7 @@ comfyui:
                 # The promise: the flags the recipe argues for, one per line of the decision above
                 # the launch. Add a flag here when the launcher gains one -- this list IS the contract.
                 missing=
-                for flag in --enable-dynamic-vram --disable-smart-memory --vram-headroom; do
+                for flag in --disable-smart-memory --vram-headroom; do
                   case " ${launch} " in
                     *" ${flag} "*) ;;
                     *) missing="${missing}${missing:+ }${flag}" ;;
@@ -405,7 +405,7 @@ comfyui:
                   echo "launch line: ${launch}" >&2
                   exit 1
                 fi
-                echo "launch line carries every promised flag: --enable-dynamic-vram --disable-smart-memory --vram-headroom"
+                echo "launch line carries every promised flag: --disable-smart-memory --vram-headroom"
             - run: write the start script that seeds the state tree, ensures the model, then execs the server
               write: /opt/comfyui/start-comfyui.sh
               mode: "0755"
@@ -452,8 +452,8 @@ comfyui:
                 else
                   touch "${BASE}/model-set.done"
                 fi
-                # Two ORTHOGONAL flags, not two names for one mechanism — each verified against
-                # ComfyUI v0.45.3's own source (the tag this candy pins):
+                # The memory flags, each verified against ComfyUI v0.45.3's own source (the tag
+                # this candy pins):
                 # --disable-smart-memory: use the card while a prompt runs, give it back when the
                 # prompt ends. execution.py runs, on the SUCCESS path of every prompt,
                 # `if comfy.model_management.DISABLE_SMART_MEMORY: unload_all_models()`, and
@@ -462,18 +462,6 @@ comfyui:
                 # `keep_loaded` is offloaded to CPU rather than kept. Measured on a 16 GB card:
                 # 2,978 MiB VRAM idle before a generation, 3,100 MiB idle after one (peak 5,980 MiB),
                 # against 10,954 MiB for a server that keeps the weights resident between prompts.
-                # --enable-dynamic-vram: the DynamicVRAM gate, NOT a duplicate of the above.
-                # cli_args.py's `enables_dynamic_vram()` already returns true here — it is false
-                # only under --disable-dynamic-vram, --highvram, --gpu-only, --novram or --cpu, none
-                # of which this launcher passes — and main.py consults that predicate twice: for
-                # `comfy_aimdo.control.init()` (the headroom / NVML-pressure engine) and for
-                # `if args.enable_dynamic_vram or (enables_dynamic_vram() and
-                # dynamic_vram_supported()):`, which initializes per-device VRAM headroom. Passing
-                # it changes no allocation policy on this pod today (torch 2.12.0+cu130 and an
-                # NVIDIA device, so `dynamic_vram_supported()` is already true); its real effect is
-                # to hold that gate open if a future ComfyUI default flips. It is passed because the
-                # accepted VRAM measurement — and the running image's own start-comfyui.sh —
-                # launched with it, and this recipe describes that measured configuration.
                 # --vram-headroom: how much VRAM ComfyUI keeps COMPLETELY free and unused, counting
                 # VRAM held by other apps. From v0.45.3's own comfy/cli_args.py: "Set the amount of vram
                 # in GB for DynamicVRAM to maintain as extra headroom above default. ComfyUI will try
@@ -482,9 +470,23 @@ comfyui:
                 # who runs other work beside ComfyUI sets it so a generation cannot eat the last
                 # gigabyte. Declared as COMFYUI_VRAM_HEADROOM, default 1, overridable per deploy
                 # (`charly config comfyui -e COMFYUI_VRAM_HEADROOM=4`).
+                #
+                # `--enable-dynamic-vram` is deliberately NOT passed. It selects ComfyUI's DynamicVRAM
+                # path, which STREAMS the checkpoint into VRAM per prompt instead of making it
+                # resident -- the container's own journal reports, for every prompt, "Model BaseModel
+                # prepared for dynamic VRAM loading. 1639MB Staged." -- and `comfyui-vram-offload`
+                # proves the objective with a whole-device 1 Hz sample whose precondition is that the
+                # per-prompt peak rises by at least 1 GiB. Under streaming that sample read 4-420 MiB
+                # on the R10 bed, so the guard declared itself meaningless; it is a SAMPLING RACE, not
+                # a state change -- inside one run the same check passed at 1.34 s and 1.79 s prompts
+                # and failed at 1.22 s on the same steady device. The flag was already measured as
+                # not being the offload mechanism (`--disable-smart-memory` is), so it bought nothing
+                # and cost the check that measures the benefit. Re-adding it needs a guard that can
+                # observe a streamed model (finer sampling during the prompt, or ComfyUI's own
+                # staged-vs-loaded state), not this one.
                 exec python /opt/comfyui/main.py --listen 0.0.0.0 --port 8188 \
                   --enable-manager --base-directory "${BASE}" \
-                  --enable-dynamic-vram --disable-smart-memory \
+                  --disable-smart-memory \
                   --vram-headroom "${COMFYUI_VRAM_HEADROOM}"
             - check: the image records the ComfyUI release tag it was built from
               id: comfyui-pinned-ref
@@ -582,10 +584,10 @@ comfyui:
                 - runtime
               # The guard for the flags themselves, where `comfyui-vram-offload` guards the EFFECT
               # of one of them: it reads the baked start-comfyui.sh, isolates the exec line, and
-              # names the flag that is missing. `--enable-dynamic-vram` is default-on for this
-              # configuration, so nothing else in the image would notice its removal -- that is
-              # exactly the claim this step makes checkable. Logic lives in the baked script: an
-              # assert-only step carries no shell variables at all (measured).
+              # names the flag that is missing. `--vram-headroom` only sets how much VRAM stays
+              # free, so nothing else in the image would notice its removal -- that is exactly the
+              # claim this step makes checkable. Logic lives in the baked script: an assert-only
+              # step carries no shell variables at all (measured).
               command: /opt/comfyui/check-launch-flags.sh
               exit_status: 0
 
