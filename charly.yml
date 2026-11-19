@@ -400,19 +400,28 @@ comfyui:
                 else
                   touch "${BASE}/model-set.done"
                 fi
+                # Two ORTHOGONAL flags, not two names for one mechanism — each verified against
+                # ComfyUI v0.45.3's own source (the tag this candy pins):
                 # --disable-smart-memory: use the card while a prompt runs, give it back when the
-                # prompt ends. Two lines of ComfyUI v0.45.3 (the tag this candy pins) are the reason,
-                # not the flag's name: execution.py runs, on the SUCCESS path of every prompt,
+                # prompt ends. execution.py runs, on the SUCCESS path of every prompt,
                 # `if comfy.model_management.DISABLE_SMART_MEMORY: unload_all_models()`, and
                 # model_management.py's `free_memory()` sets `memory_to_free = 1e32` under that flag
                 # instead of `memory_required - get_free_memory(device)`, so every model outside
                 # `keep_loaded` is offloaded to CPU rather than kept. Measured on a 16 GB card:
                 # 2,978 MiB VRAM idle before a generation, 3,100 MiB idle after one (peak 5,980 MiB),
                 # against 10,954 MiB for a server that keeps the weights resident between prompts.
-                # --enable-dynamic-vram is deliberately NOT passed: it only overrides a gate that is
-                # already open, because cli_args.py's `enables_dynamic_vram()` returns true unless
-                # --disable-dynamic-vram, --highvram, --gpu-only, --novram or --cpu is passed. It
-                # PERMITS dynamic loading; it is not what offloads, and adding it changes nothing here.
+                # --enable-dynamic-vram: the DynamicVRAM gate, NOT a duplicate of the above.
+                # cli_args.py's `enables_dynamic_vram()` already returns true here — it is false
+                # only under --disable-dynamic-vram, --highvram, --gpu-only, --novram or --cpu, none
+                # of which this launcher passes — and main.py consults that predicate twice: for
+                # `comfy_aimdo.control.init()` (the headroom / NVML-pressure engine) and for
+                # `if args.enable_dynamic_vram or (enables_dynamic_vram() and
+                # dynamic_vram_supported()):`, which initializes per-device VRAM headroom. Passing
+                # it changes no allocation policy on this pod today (torch 2.12.0+cu130 and an
+                # NVIDIA device, so `dynamic_vram_supported()` is already true); its real effect is
+                # to hold that gate open if a future ComfyUI default flips. It is passed because the
+                # accepted VRAM measurement — and the running image's own start-comfyui.sh —
+                # launched with it, and this recipe describes that measured configuration.
                 # --vram-headroom: how much VRAM ComfyUI keeps COMPLETELY free and unused, counting
                 # VRAM held by other apps. From v0.45.3's own comfy/cli_args.py: "Set the amount of vram
                 # in GB for DynamicVRAM to maintain as extra headroom above default. ComfyUI will try
@@ -423,7 +432,7 @@ comfyui:
                 # (`charly config comfyui -e COMFYUI_VRAM_HEADROOM=4`).
                 exec python /opt/comfyui/main.py --listen 0.0.0.0 --port 8188 \
                   --enable-manager --base-directory "${BASE}" \
-                  --disable-smart-memory \
+                  --enable-dynamic-vram --disable-smart-memory \
                   --vram-headroom "${COMFYUI_VRAM_HEADROOM}"
             - check: the image records the ComfyUI release tag it was built from
               id: comfyui-pinned-ref

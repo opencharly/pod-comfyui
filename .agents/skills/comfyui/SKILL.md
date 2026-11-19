@@ -75,8 +75,10 @@ After `charly start`:
 ## VRAM: used while generating, released when idle
 
 The launcher passes `--disable-smart-memory`, so the weights leave the card when a prompt
-finishes. Measured on an RTX 4080 SUPER (16,376 MiB), one generation being
-CheckpointLoaderSimple → KSampler 4 steps → VAEDecode → SaveImage:
+finishes, and `--enable-dynamic-vram`, which pins the DynamicVRAM gate explicitly. That gate is
+default-on for this configuration, so the second flag changes no allocation today; it holds the
+intent if a future ComfyUI default flips. Measured on an RTX 4080 SUPER (16,376 MiB), one
+generation being CheckpointLoaderSimple → KSampler 4 steps → VAEDecode → SaveImage:
 
 | Reading | VRAM |
 |---|---|
