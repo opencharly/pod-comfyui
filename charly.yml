@@ -423,7 +423,6 @@ comfyui:
                 # (`charly config comfyui -e COMFYUI_VRAM_HEADROOM=4`).
                 exec python /opt/comfyui/main.py --listen 0.0.0.0 --port 8188 \
                   --enable-manager --base-directory "${BASE}" \
-                  --disable-smart-memory \
                   --vram-headroom "${COMFYUI_VRAM_HEADROOM}"
             - check: the image records the ComfyUI release tag it was built from
               id: comfyui-pinned-ref
