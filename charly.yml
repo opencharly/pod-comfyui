@@ -1,13 +1,17 @@
 comfyui:
     candy:
         description: |
-            GPU image-generation server with ComfyUI + the Manager and model-download tooling baked in
-            Clones ComfyUI to ~/ComfyUI plus the ComfyUI-Manager custom node and
-            the full model directory tree, and installs the aria2 + git-lfs tooling
-            used to fetch model checkpoints. A supervisord service runs
-            `main.py --listen 0.0.0.0` on port 8188. Each piece is verifiable: the
-            cloned entrypoint and Manager, the model dirs, the download-tooling
-            packages, and the live /system_stats API on port 8188.
+            GPU image-generation server with ComfyUI, its built-in manager, and model-download tooling baked in
+            Clones ComfyUI at the pinned COMFYUI_REF tag into the image-owned
+            /opt/comfyui, and keeps every mutable thing in the comfyui volume at
+            ~/ComfyUI through ComfyUI's own --base-directory. The built-in manager
+            is enabled (--enable-manager); there is no ComfyUI-Manager custom-node
+            clone. aria2 and git-lfs fetch the checkpoint and the model set on
+            first boot. A supervisord service runs /opt/comfyui/start-comfyui.sh,
+            which seeds the state tree, writes the model-set manifest and launches
+            the fetch before it execs main.py --listen 0.0.0.0 --port 8188. Each
+            piece is verifiable: the pinned app clone, the model dirs, the
+            download-tooling packages, and the live /system_stats API on port 8188.
         # A CANDY DECLARES WHAT IT NEEDS TO RUN; THE BOX DECLARES THE SUBSTRATE'S GPU
         # CONTRACT. This candy needs the supervisord SERVICE and nothing else: it clones
         # ComfyUI (Python), installs it from pixi.toml, and supervises `main.py`. It never
