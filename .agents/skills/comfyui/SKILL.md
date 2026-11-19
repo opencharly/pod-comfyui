@@ -75,13 +75,22 @@ After `charly start`:
 ## VRAM: used while generating, released when idle
 
 The launcher passes `--disable-smart-memory`, so the weights leave the card when a prompt
-finishes. It does **not** pass `--enable-dynamic-vram`: that flag puts ComfyUI on its DynamicVRAM
-path, which streams the checkpoint into VRAM per prompt instead of making it resident — the
-container's own journal reports `Model BaseModel prepared for dynamic VRAM loading. 1639MB
-Staged.` on every prompt — and the `comfyui-vram-offload` check samples the whole device once per
-second and requires the per-prompt peak to rise by at least 1 GiB. Under streaming that sample
-read 4–420 MiB on a real GPU bed, so the check declared itself meaningless. The flag changed
-nothing about the offload mechanism (`--disable-smart-memory` is the mechanism), so it stays out.
+finishes. It does **not** pass `--enable-dynamic-vram`, and that flag is **inert here**: ComfyUI's
+DynamicVRAM path is default-on on this pod, so the journal's `Model BaseModel prepared for dynamic
+VRAM loading. 1639MB Staged.` line appears on the same prompt **with and without** the flag
+(measured on the R10 bed, 2026-11-19: the red runs carried it, the green runs did not, and both
+staged). It is left out because it carries no behaviour on this pod and would be one more thing
+to keep true — never because removing it restores anything.
+
+What made `comfyui-vram-offload` fail twice was **its own sampling period**, not a streamed
+model. The load rides the card for about a prompt's duration: a 24 ms whole-device trace of a
+real prompt shows the card at or above 5000 MiB for 0.91 s and 1.23 s on two runs, peaking **1942
+and 1828 MiB above the pre-prompt reading** — the checkpoint IS resident. The old loop's period
+was ~1.3–1.5 s (`nvidia-smi` fork + `/history` round trip + `sleep 1`), so a 1.22 s prompt could
+fall entirely between two samples and produce exactly the `4–420 MiB` readings. The check now
+samples at **100 ms** (9–12 samples inside a fully-loaded window), keeps `LOADED_MIB` at 1024
+against that measured peak, and reports the sample count, the largest gap, the prompt duration
+and the margin over the threshold — so a green run carries its own evidence.
 Measured on an RTX 4080 SUPER (16,376 MiB), one
 generation being CheckpointLoaderSimple → KSampler 4 steps → VAEDecode → SaveImage:
 
