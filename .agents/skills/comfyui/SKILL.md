@@ -75,8 +75,10 @@ After `charly start`:
 ## VRAM: used while generating, released when idle
 
 The launcher passes `--disable-smart-memory`, so the weights leave the card when a prompt
-finishes. Measured on an RTX 4080 SUPER (16,376 MiB), one generation being
-CheckpointLoaderSimple → KSampler 4 steps → VAEDecode → SaveImage:
+finishes, and `--enable-dynamic-vram`, which pins the DynamicVRAM gate explicitly. That gate is
+default-on for this configuration, so the second flag changes no allocation today; it holds the
+intent if a future ComfyUI default flips. Measured on an RTX 4080 SUPER (16,376 MiB), one
+generation being CheckpointLoaderSimple → KSampler 4 steps → VAEDecode → SaveImage:
 
 | Reading | VRAM |
 |---|---|
@@ -97,6 +99,13 @@ are in the same number; a launch without the flag keeps the weights and fails th
 `COMFYUI_VRAM_HEADROOM` (default `1`) is a different knob: the margin ComfyUI's DynamicVRAM
 keeps completely free, counting VRAM held by other apps. On a card with 9+ GiB spare it is met
 trivially, so it does not decide the idle footprint and must not be read as a memory bound.
+
+The flags themselves are asserted, not just described: the `comfyui-launch-flags` runtime check
+runs `/opt/comfyui/check-launch-flags.sh`, which isolates the `exec` line of the baked
+`start-comfyui.sh` (comments stripped, continuations joined) and fails naming any of
+`--enable-dynamic-vram`, `--disable-smart-memory`, `--vram-headroom` that is missing. A later
+edit that drops a flag from the launch line goes red there — otherwise the argument for carrying
+the flag would be a claim nothing in the image defends.
 
 ## When to Use This Skill
 
