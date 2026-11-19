@@ -222,6 +222,138 @@ comfyui:
                   exit 1
                 fi
                 echo "${found} declared model file(s) present, fetch log clean"
+            - run: write the runtime check that a completed prompt releases the model from VRAM
+              write: /opt/comfyui/check-vram-offload.sh
+              mode: "0755"
+              run_as: root
+              content: |
+                #!/bin/bash
+                set -eu
+                # The ONE runtime assertion of this candy's memory claim, and the check that FAILS on a
+                # launch WITHOUT `--disable-smart-memory`: ComfyUI then keeps the weights resident
+                # between prompts, so the reading after a prompt stays ~2 GB ABOVE the pre-prompt one
+                # instead of returning to it.
+                #
+                # It asserts a DELTA, never an absolute footprint, because nvidia-smi reports the
+                # WHOLE device: another container's models are in the same number. The delta is the
+                # part this deployment caused, so the check means the same thing on a shared card.
+                #
+                # A SCRIPT, not an inline assert-only step: every shell variable in such a step --
+                # even one the step assigns itself -- makes the assertion DEAD (measured on a bed run).
+                BASE="${HOME}/ComfyUI"
+                PORT="${HOST_PORT:-8188}"
+                API="http://127.0.0.1:${PORT}"
+                # MiB. The checkpoint is 2034 MiB: a 1024 MiB rise proves the prompt really loaded it,
+                # and a 768 MiB settle tolerance absorbs allocator/context drift without ever
+                # admitting a retained 2 GB model.
+                LOADED_MIB=1024
+                RETAINED_MIB=768
+
+                vram_used_mib() {
+                  if command -v nvidia-smi >/dev/null 2>&1; then
+                    nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -n1 | tr -dc '0-9'
+                    return 0
+                  fi
+                  # No nvidia-smi (a VM without the toolkit binary): torch's device-wide free/total.
+                  # This spawns a CUDA context of its own, which is why the delta thresholds carry slack.
+                  python -c 'import torch; f,t=torch.cuda.mem_get_info(); print((t-f)//(1024**2))'
+                }
+
+                # 1. The server and the checkpoint. On a fresh volume the 2 GB checkpoint is still
+                #    being fetched, and a prompt naming it would be rejected.
+                waited=0
+                while ! curl -sf -o /dev/null "${API}/system_stats"; do
+                  if [ "${waited}" -ge 300 ]; then
+                    echo "the server did not answer ${API}/system_stats within 300s" >&2
+                    exit 1
+                  fi
+                  sleep 5
+                  waited=$((waited + 5))
+                done
+                waited=0
+                while [ ! -s "${BASE}/models/checkpoints/${COMFYUI_MODEL}" ]; do
+                  if [ "${waited}" -ge 600 ]; then
+                    echo "the checkpoint ${COMFYUI_MODEL} did not land within 600s" >&2
+                    exit 1
+                  fi
+                  sleep 5
+                  waited=$((waited + 5))
+                done
+
+                # 2. One small generation -- the load the flag acts on. 512x512, 8 steps: long enough
+                #    to hold the weights on the card for several samples, short enough for a bed.
+                # A UNIQUE graph per run, or ComfyUI serves the SECOND identical prompt from its
+                # execution cache: nothing loads, the card's usage never rises, and this check's
+                # own load assertion fails for a reason that has nothing to do with the flag
+                # (measured on a bed run -- check-live PASS, then feature-run "peak rose 0 MiB").
+                nonce=$(date +%s)
+                payload=$(cat <<JSON
+                {"prompt":{
+                  "1":{"class_type":"CheckpointLoaderSimple","inputs":{"ckpt_name":"${COMFYUI_MODEL}"}},
+                  "2":{"class_type":"CLIPTextEncode","inputs":{"text":"a red apple","clip":["1",1]}},
+                  "3":{"class_type":"CLIPTextEncode","inputs":{"text":"blurry","clip":["1",1]}},
+                  "4":{"class_type":"EmptyLatentImage","inputs":{"width":512,"height":512,"batch_size":1}},
+                  "5":{"class_type":"KSampler","inputs":{"seed":${nonce},"steps":8,"cfg":7.0,"sampler_name":"euler","scheduler":"normal","denoise":1.0,"model":["1",0],"positive":["2",0],"negative":["3",0],"latent_image":["4",0]}},
+                  "6":{"class_type":"VAEDecode","inputs":{"samples":["5",0],"vae":["1",2]}},
+                  "7":{"class_type":"SaveImage","inputs":{"filename_prefix":"charly-vram-check-${nonce}","images":["6",0]}}
+                }}
+                JSON
+                )
+                before=$(vram_used_mib)
+                peak="${before}"
+                reply=$(curl -sf -X POST -H 'Content-Type: application/json' -d "${payload}" "${API}/prompt") || {
+                  echo "POST ${API}/prompt failed" >&2
+                  exit 1
+                }
+                id=$(printf '%s' "${reply}" | sed -n 's/.*"prompt_id" *: *"\([^"]*\)".*/\1/p')
+                if [ -z "${id}" ]; then
+                  echo "no prompt_id in the API reply: ${reply}" >&2
+                  exit 1
+                fi
+
+                # 3. Follow the prompt to success, sampling the card as it runs.
+                waited=0
+                while :; do
+                  used=$(vram_used_mib)
+                  [ "${used}" -gt "${peak}" ] && peak="${used}"
+                  hist=$(curl -sf "${API}/history/${id}" || true)
+                  printf '%s' "${hist}" | grep -qE '"status_str" *: *"success"' && break
+                  if printf '%s' "${hist}" | grep -qE '"status_str" *: *"error"'; then
+                    echo "the prompt reported an error:" >&2
+                    printf '%s\n' "${hist}" >&2
+                    exit 1
+                  fi
+                  if [ "${waited}" -ge 240 ]; then
+                    echo "prompt ${id} did not complete within 240s" >&2
+                    exit 1
+                  fi
+                  sleep 1
+                  waited=$((waited + 1))
+                done
+
+                # 4. The weights must be back OFF the card. Unloading is not synchronous with the HTTP
+                #    reply, so settle: the best reading inside 60s is the one that counts.
+                settled="${peak}"
+                waited=0
+                while :; do
+                  used=$(vram_used_mib)
+                  [ "${used}" -lt "${settled}" ] && settled="${used}"
+                  [ $((settled - before)) -le "${RETAINED_MIB}" ] && break
+                  [ "${waited}" -ge 60 ] && break
+                  sleep 2
+                  waited=$((waited + 2))
+                done
+                echo "VRAM before=${before} MiB peak=${peak} MiB settled=${settled} MiB"
+
+                if [ $((peak - before)) -lt "${LOADED_MIB}" ]; then
+                  echo "the prompt did not put the checkpoint on the card (peak rose $((peak - before)) MiB, expected >= ${LOADED_MIB}); the check would prove nothing" >&2
+                  exit 1
+                fi
+                if [ $((settled - before)) -gt "${RETAINED_MIB}" ]; then
+                  echo "the model is still pinned in VRAM after the prompt: settled ${settled} MiB is $((settled - before)) MiB above the pre-prompt ${before} MiB (tolerance ${RETAINED_MIB})" >&2
+                  exit 1
+                fi
+                echo "the checkpoint was loaded and released: settled within $((settled - before)) MiB of the pre-prompt reading"
             - run: write the start script that seeds the state tree, ensures the model, then execs the server
               write: /opt/comfyui/start-comfyui.sh
               mode: "0755"
@@ -268,6 +400,19 @@ comfyui:
                 else
                   touch "${BASE}/model-set.done"
                 fi
+                # --disable-smart-memory: use the card while a prompt runs, give it back when the
+                # prompt ends. Two lines of ComfyUI v0.45.3 (the tag this candy pins) are the reason,
+                # not the flag's name: execution.py runs, on the SUCCESS path of every prompt,
+                # `if comfy.model_management.DISABLE_SMART_MEMORY: unload_all_models()`, and
+                # model_management.py's `free_memory()` sets `memory_to_free = 1e32` under that flag
+                # instead of `memory_required - get_free_memory(device)`, so every model outside
+                # `keep_loaded` is offloaded to CPU rather than kept. Measured on a 16 GB card:
+                # 2,978 MiB VRAM idle before a generation, 3,100 MiB idle after one (peak 5,980 MiB),
+                # against 10,954 MiB for a server that keeps the weights resident between prompts.
+                # --enable-dynamic-vram is deliberately NOT passed: it only overrides a gate that is
+                # already open, because cli_args.py's `enables_dynamic_vram()` returns true unless
+                # --disable-dynamic-vram, --highvram, --gpu-only, --novram or --cpu is passed. It
+                # PERMITS dynamic loading; it is not what offloads, and adding it changes nothing here.
                 # --vram-headroom: how much VRAM ComfyUI keeps COMPLETELY free and unused, counting
                 # VRAM held by other apps. From v0.45.3's own comfy/cli_args.py: "Set the amount of vram
                 # in GB for DynamicVRAM to maintain as extra headroom above default. ComfyUI will try
@@ -278,6 +423,7 @@ comfyui:
                 # (`charly config comfyui -e COMFYUI_VRAM_HEADROOM=4`).
                 exec python /opt/comfyui/main.py --listen 0.0.0.0 --port 8188 \
                   --enable-manager --base-directory "${BASE}" \
+                  --disable-smart-memory \
                   --vram-headroom "${COMFYUI_VRAM_HEADROOM}"
             - check: the image records the ComfyUI release tag it was built from
               id: comfyui-pinned-ref
@@ -353,6 +499,19 @@ comfyui:
               # here: BOUND"). The logic lives in a file the image bakes, and this step is one
               # command with no variables of its own.
               command: /opt/comfyui/check-model-set.sh
+              exit_status: 0
+
+            - check: a completed prompt releases the model from VRAM — the same run raises the card's
+                usage and then settles back, so a launch that keeps the weights resident fails here
+              id: comfyui-vram-offload
+              context:
+                - runtime
+              # The runtime check that FAILS without `--disable-smart-memory`. It runs one small
+              # generation and asserts the DELTA (up by >= 1 GiB while the prompt runs, back within
+              # 768 MiB afterwards), which is attributable to this deployment even when another
+              # container shares the card. Logic lives in the baked script: an assert-only step
+              # cannot carry shell variables at all.
+              command: /opt/comfyui/check-vram-offload.sh
               exit_status: 0
 
 
