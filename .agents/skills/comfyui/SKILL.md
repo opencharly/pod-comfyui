@@ -88,6 +88,12 @@ CheckpointLoaderSimple → KSampler 4 steps → VAEDecode → SaveImage:
 ComfyUI's own process barely moves (248 MiB idle → 370 MiB after a generation), which is the
 point: between prompts the model is not pinned in VRAM.
 
+The candy proves it on a live deployment: the `comfyui-vram-offload` runtime check runs one
+512×512 prompt and requires the card's used VRAM to rise by at least 1 GiB while it runs and to
+settle back within 768 MiB of the pre-prompt reading. It asserts that delta rather than an
+absolute footprint, because `nvidia-smi` reports the whole device and another container's models
+are in the same number; a launch without the flag keeps the weights and fails the check.
+
 `COMFYUI_VRAM_HEADROOM` (default `1`) is a different knob: the margin ComfyUI's DynamicVRAM
 keeps completely free, counting VRAM held by other apps. On a card with 9+ GiB spare it is met
 trivially, so it does not decide the idle footprint and must not be read as a memory bound.
