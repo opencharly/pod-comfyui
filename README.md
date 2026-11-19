@@ -2,20 +2,25 @@
 
 The `comfyui` candy of the OpenCharly candy library, as a standalone repo (the
 candy de-submodule cutover, kind-prefixed naming). It ships a GPU
-image-generation server with ComfyUI + the Manager and model-download tooling
-baked in.
+image-generation server with ComfyUI, its built-in manager, and the
+model-download tooling baked in.
 
 ## What it provides
 
-Clones ComfyUI to `~/ComfyUI` plus the ComfyUI-Manager custom node and the full
-model directory tree, and installs the `aria2` + `git-lfs` tooling used to fetch
-model checkpoints. A supervisord service runs `main.py --listen 0.0.0.0` on port
-`8188`.
+Clones ComfyUI at the pinned `COMFYUI_REF` tag into the image-owned
+`/opt/comfyui` and keeps every mutable thing in the `comfyui` volume at
+`~/ComfyUI`, addressed by ComfyUI's own `--base-directory`. The built-in manager
+is enabled (`--enable-manager`); the legacy ComfyUI-Manager custom-node clone is
+gone. `aria2` and `git-lfs` are installed for the first-boot model fetch. A
+supervisord service runs `/opt/comfyui/start-comfyui.sh`, which seeds the state
+tree, writes the model-set manifest, launches the fetch, and then execs
+`main.py --listen 0.0.0.0 --port 8188`.
 
 | Property | Value |
 |---|---|
 | Port | `8188` (ComfyUI web UI) |
-| Service | `comfyui` (`python ~/ComfyUI/main.py --listen 0.0.0.0`, `restart: always`) |
+| App | `/opt/comfyui` at the pinned `COMFYUI_REF` tag (image-owned) |
+| Service | `comfyui` (`/opt/comfyui/start-comfyui.sh`, `restart: always`) |
 | Requires | `layer-supervisord` (the GPU **substrate** is the box's — see below) |
 | Volume | `comfyui` at `~/ComfyUI` |
 | Package | `aria2`, `git-lfs` (arch/fedora) |
