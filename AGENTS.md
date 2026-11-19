@@ -39,14 +39,21 @@ Canonical files:
 
 ## Modify this repo
 
-- Edit the `comfyui:` candy entity in `charly.yml`; the `skill:` entity in the
-  same file is the owning skill's source — a candy change and its skill change
-  land together.
+- Edit the `comfyui:` candy entity in `charly.yml`; the owning skill's BODY is
+  `.agents/skills/comfyui/SKILL.md` and the `skill:` entity in `charly.yml` is
+  only its routing entry (`name` / `family` / `owner`, plus a `description:`
+  where the node states one) — a candy change and its skill change land
+  together.
 - Python dependency changes belong in `pixi.toml` / `pixi.lock`, not in the plan.
 - The `comfyui` volume at `~/ComfyUI` is the persistent model/output store; keep
   the service's `working_directory` and the clone path in step.
-- The `skill:` entity is the source for `/charly-comfyui:comfyui`; never edit the
-  generated `SKILL.md` — regenerate it.
+- `.agents/skills/comfyui/SKILL.md` is the AUTHORED source for
+  `/charly-comfyui:comfyui`, and `charly box generate` READS it: it resolves the
+  skill node's body from the repo root and fails loudly when the file is absent
+  (`skill "comfyui": no body — … no .agents/skills/comfyui/SKILL.md exists`). The
+  GENERATED copy is the marketplace corpus in `opencharly/marketplace`, produced
+  by `charly marketplace generate` from the refs list — never edit it there;
+  edit the file here and regenerate the corpus.
 
 ## Landing
 
