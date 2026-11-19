@@ -100,6 +100,13 @@ are in the same number; a launch without the flag keeps the weights and fails th
 keeps completely free, counting VRAM held by other apps. On a card with 9+ GiB spare it is met
 trivially, so it does not decide the idle footprint and must not be read as a memory bound.
 
+The flags themselves are asserted, not just described: the `comfyui-launch-flags` runtime check
+runs `/opt/comfyui/check-launch-flags.sh`, which isolates the `exec` line of the baked
+`start-comfyui.sh` (comments stripped, continuations joined) and fails naming any of
+`--enable-dynamic-vram`, `--disable-smart-memory`, `--vram-headroom` that is missing. A later
+edit that drops a flag from the launch line goes red there — otherwise the argument for carrying
+the flag would be a claim nothing in the image defends.
+
 ## When to Use This Skill
 
 **MUST be invoked** when the task involves the comfyui box, image generation, or ComfyUI workflows. Invoke this skill BEFORE reading source code or launching Explore agents.

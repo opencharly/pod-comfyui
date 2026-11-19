@@ -354,6 +354,58 @@ comfyui:
                   exit 1
                 fi
                 echo "the checkpoint was loaded and released: settled within $((settled - before)) MiB of the pre-prompt reading"
+            - run: write the runtime check that the emitted launch line still carries every flag the recipe promises
+              write: /opt/comfyui/check-launch-flags.sh
+              mode: "0755"
+              run_as: root
+              content: |
+                #!/bin/bash
+                set -eu
+                # The ONE assertion of the launch CONTRACT: every flag this recipe promises is on the
+                # command line the container actually runs, and a later edit that drops one FAILS here.
+                #
+                # It reads the EMITTED /opt/comfyui/start-comfyui.sh and derives its facts from THAT
+                # file -- it never carries a second copy of the launch line (R2), because a copy would
+                # go green on itself while the launcher drifted underneath it.
+                #
+                # It isolates the LAUNCH COMMAND, never the whole file: the rationale comment block
+                # above the launch NAMES all three flags in prose, so a whole-file grep passes on a
+                # launcher that has already lost the flag (measured: `grep -q -- --enable-dynamic-vram`
+                # exits 0 on a launch line that no longer passes it). Comments are stripped and the
+                # backslash continuations joined, so the assertion sees the one command supervisord runs.
+                LAUNCHER=/opt/comfyui/start-comfyui.sh
+                if [ ! -s "${LAUNCHER}" ]; then
+                  echo "${LAUNCHER} is missing or empty: there is no launch line to assert" >&2
+                  exit 1
+                fi
+                launch=$(awk '
+                  /^[[:space:]]*#/ { next }
+                  { buf = buf $0
+                    if (sub(/[[:space:]]*\\[[:space:]]*$/, " ", buf)) next
+                    if (buf ~ /(^|[[:space:]])exec[[:space:]]/ && buf ~ /main\.py/) print buf
+                    buf = ""
+                  }
+                  END { if (buf ~ /(^|[[:space:]])exec[[:space:]]/ && buf ~ /main\.py/) print buf }
+                ' "${LAUNCHER}")
+                if [ -z "${launch}" ]; then
+                  echo "no 'exec python ... main.py' launch line in ${LAUNCHER}" >&2
+                  exit 1
+                fi
+                # The promise: the flags the recipe argues for, one per line of the decision above
+                # the launch. Add a flag here when the launcher gains one -- this list IS the contract.
+                missing=
+                for flag in --enable-dynamic-vram --disable-smart-memory --vram-headroom; do
+                  case " ${launch} " in
+                    *" ${flag} "*) ;;
+                    *) missing="${missing}${missing:+ }${flag}" ;;
+                  esac
+                done
+                if [ -n "${missing}" ]; then
+                  echo "the launch line in ${LAUNCHER} is missing: ${missing}" >&2
+                  echo "launch line: ${launch}" >&2
+                  exit 1
+                fi
+                echo "launch line carries every promised flag: --enable-dynamic-vram --disable-smart-memory --vram-headroom"
             - run: write the start script that seeds the state tree, ensures the model, then execs the server
               write: /opt/comfyui/start-comfyui.sh
               mode: "0755"
@@ -521,6 +573,20 @@ comfyui:
               # container shares the card. Logic lives in the baked script: an assert-only step
               # cannot carry shell variables at all.
               command: /opt/comfyui/check-vram-offload.sh
+              exit_status: 0
+
+            - check: the emitted launch line carries every flag the recipe promises — dropping one
+                fails here, so the argument this recipe makes cannot silently rot
+              id: comfyui-launch-flags
+              context:
+                - runtime
+              # The guard for the flags themselves, where `comfyui-vram-offload` guards the EFFECT
+              # of one of them: it reads the baked start-comfyui.sh, isolates the exec line, and
+              # names the flag that is missing. `--enable-dynamic-vram` is default-on for this
+              # configuration, so nothing else in the image would notice its removal -- that is
+              # exactly the claim this step makes checkable. Logic lives in the baked script: an
+              # assert-only step carries no shell variables at all (measured).
+              command: /opt/comfyui/check-launch-flags.sh
               exit_status: 0
 
 
