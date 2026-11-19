@@ -322,19 +322,19 @@ comfyui:
                 # The same run passed at 1.79 s and failed at 1.22 s on one steady device
                 # (measured), i.e. the check was racing its own sampler, not the deployment.
                 #
-                # SAMPLE_PERIOD_MS is derived from measurement, not chosen. A whole-device trace of
-                # THIS pod running a real prompt (nvidia-smi --query-gpu=memory.used on the host,
-                # 2026-11-19) shows the load riding the card for about the prompt's own duration:
+                # SAMPLE_PERIOD_MS is derived from measurement, not chosen. A 24 ms whole-device
+                # trace of THIS pod running real prompts (nvidia-smi --query-gpu=memory.used on
+                # the host, 2026-11-19) gives the loaded window directly:
                 #
-                #   device baseline 3058 MiB | pod idle 3311 MiB
-                #   prompt 1, 3.24 s -> peak 5253 MiB (+1828 MiB), back to 3431 MiB one second later
-                #   prompt 2, 2.68 s -> peak 5259 MiB (+1830 MiB), same shape
+                #   prompt | at or above 4000 MiB | at or above 5000 MiB | peak  | rise over pre-prompt
+                #     1    |        1.40 s        |        0.91 s        | 5253  |      +1942 MiB
+                #     2    |        1.97 s        |        1.23 s        | 5259  |      +1828 MiB
                 #
-                # So the residency window IS ~1-3 s and the checkpoint IS fully on the card; the
-                # old ~1.3-1.5 s period could put a 1.22 s prompt entirely between two samples.
-                # A 100 ms period puts 12 samples inside a 1.22 s window and ~32 inside a 3.24 s
-                # one, which is why the threshold below can stay at 1024 MiB: the measured peak is
-                # +1828 MiB, an 804 MiB margin, and the sampler no longer decides the outcome.
+                # So the checkpoint IS fully resident, for roughly a second or two. The old
+                # ~1.3-1.5 s loop held 0-1 samples inside that window and could miss a 1.22 s
+                # prompt entirely; a 100 ms period holds 9-12. That is why the threshold below
+                # stays at 1024 MiB: the measured rise is +1828 MiB, an 804 MiB margin, so the
+                # sampler -- not the threshold -- was the defect.
                 #
                 # The run REPORTS the sample count, the largest gap and the prompt duration, so a
                 # reader can see the margin instead of assuming it. HISTORY_PERIOD_MS stays at 1 s
