@@ -72,6 +72,26 @@ After `charly start`:
 - `charly service status comfyui` — all services RUNNING
 - `curl -s -o /dev/null -w '%{http_code}' http://localhost:8188` — ComfyUI HTTP returns 200
 
+## VRAM: used while generating, released when idle
+
+The launcher passes `--disable-smart-memory`, so the weights leave the card when a prompt
+finishes. Measured on an RTX 4080 SUPER (16,376 MiB), one generation being
+CheckpointLoaderSimple → KSampler 4 steps → VAEDecode → SaveImage:
+
+| Reading | VRAM |
+|---|---|
+| idle, `/queue` empty, before any generation | 2,978 MiB |
+| idle after that generation completed | 3,100 MiB |
+| peak during a 1024×1024 20-step run | 5,980 MiB |
+| this candy's historical baseline, weights kept resident | 10,954 MiB |
+
+ComfyUI's own process barely moves (248 MiB idle → 370 MiB after a generation), which is the
+point: between prompts the model is not pinned in VRAM.
+
+`COMFYUI_VRAM_HEADROOM` (default `1`) is a different knob: the margin ComfyUI's DynamicVRAM
+keeps completely free, counting VRAM held by other apps. On a card with 9+ GiB spare it is met
+trivially, so it does not decide the idle footprint and must not be read as a memory bound.
+
 ## When to Use This Skill
 
 **MUST be invoked** when the task involves the comfyui box, image generation, or ComfyUI workflows. Invoke this skill BEFORE reading source code or launching Explore agents.
