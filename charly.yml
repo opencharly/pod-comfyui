@@ -8,8 +8,22 @@ comfyui:
             `main.py --listen 0.0.0.0` on port 8188. Each piece is verifiable: the
             cloned entrypoint and Manager, the model dirs, the download-tooling
             packages, and the live /system_stats API on port 8188.
+        # A CANDY DECLARES WHAT IT NEEDS TO RUN; THE BOX DECLARES THE SUBSTRATE'S GPU
+        # CONTRACT. This candy needs the supervisord SERVICE and nothing else: it clones
+        # ComfyUI (Python), installs it from pixi.toml, and supervises `main.py`. It never
+        # compiles a CUDA translation unit, never invokes nvcc, and never links against the
+        # toolkit — torch arrives as the cu130 wheel (which BUNDLES its CUDA runtime), and
+        # the DRIVER comes from wherever the substrate supplies it:
+        #   * pod  -> layer-cdi: the kernel module is host-global, the runtime injects the
+        #            driver user-space per container through /etc/cdi/nvidia.yaml;
+        #   * VM   -> layer-nvidia + layer-cuda: the guest owns its kernel module and must
+        #            bake the driver user-space.
+        # `require: layer-cuda` here asserted the VM contract for EVERY consumer, so a CDI
+        # pod image inheriting this candy composed layer-nvidia's install and layer-cuda's
+        # strip after its own base had already applied them — and then reported the VM
+        # layer's `nvidia-ctk` assertions as failures on a pod that must never have
+        # `nvidia-ctk` at all (opencharly/pod-comfyui#24). The substrate belongs to the box.
         require:
-            - '@github.com/opencharly/layer-cuda:v2026.290.1513'
             - '@github.com/opencharly/layer-supervisord:v2026.271.1817'
         env:
             COMFYUI_REF: v0.45.3
