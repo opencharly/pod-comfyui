@@ -75,9 +75,23 @@ After `charly start`:
 ## VRAM: used while generating, released when idle
 
 The launcher passes `--disable-smart-memory`, so the weights leave the card when a prompt
-finishes, and `--enable-dynamic-vram`, which pins the DynamicVRAM gate explicitly. That gate is
-default-on for this configuration, so the second flag changes no allocation today; it holds the
-intent if a future ComfyUI default flips. Measured on an RTX 4080 SUPER (16,376 MiB), one
+finishes. It does **not** pass `--enable-dynamic-vram`, and that flag is **inert here**: ComfyUI's
+DynamicVRAM path is default-on on this pod, so the journal's `Model BaseModel prepared for dynamic
+VRAM loading. 1639MB Staged.` line appears on the same prompt **with and without** the flag
+(measured on the R10 bed, 2026-11-19: the red runs carried it, the green runs did not, and both
+staged). It is left out because it carries no behaviour on this pod and would be one more thing
+to keep true — never because removing it restores anything.
+
+What made `comfyui-vram-offload` fail twice was **its own sampling period**, not a streamed
+model. The load rides the card for about a prompt's duration: a 24 ms whole-device trace of a
+real prompt shows the card at or above 5000 MiB for 0.91 s and 1.23 s on two runs, peaking **1942
+and 1828 MiB above the pre-prompt reading** — the checkpoint IS resident. The old loop's period
+was ~1.3–1.5 s (`nvidia-smi` fork + `/history` round trip + `sleep 1`), so a 1.22 s prompt could
+fall entirely between two samples and produce exactly the `4–420 MiB` readings. The check now
+samples at **100 ms** (9–12 samples inside a fully-loaded window), keeps `LOADED_MIB` at 1024
+against that measured peak, and reports the sample count, the largest gap, the prompt duration
+and the margin over the threshold — so a green run carries its own evidence.
+Measured on an RTX 4080 SUPER (16,376 MiB), one
 generation being CheckpointLoaderSimple → KSampler 4 steps → VAEDecode → SaveImage:
 
 | Reading | VRAM |
@@ -103,7 +117,7 @@ trivially, so it does not decide the idle footprint and must not be read as a me
 The flags themselves are asserted, not just described: the `comfyui-launch-flags` runtime check
 runs `/opt/comfyui/check-launch-flags.sh`, which isolates the `exec` line of the baked
 `start-comfyui.sh` (comments stripped, continuations joined) and fails naming any of
-`--enable-dynamic-vram`, `--disable-smart-memory`, `--vram-headroom` that is missing. A later
+`--disable-smart-memory`, `--vram-headroom` that is missing. A later
 edit that drops a flag from the launch line goes red there — otherwise the argument for carrying
 the flag would be a claim nothing in the image defends.
 

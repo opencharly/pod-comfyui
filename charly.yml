@@ -312,24 +312,75 @@ comfyui:
                 fi
 
                 # 3. Follow the prompt to success, sampling the card as it runs.
-                waited=0
+                #
+                # THE PERIOD IS PART OF THE ASSERTION, not a tuning detail. The checkpoint sits on
+                # the card for the whole EXECUTION phase, and on this 512x512/8-step prompt that
+                # phase lasts a few tenths of a second. The sampler this replaces slept a full
+                # second on top of an nvidia-smi fork and a /history call -- an effective period of
+                # 1.3-1.5 s -- so a 1.22 s prompt could fall ENTIRELY between two samples: the run
+                # then reported `peak rose 4 MiB` on a device that had loaded the model correctly.
+                # The same run passed at 1.79 s and failed at 1.22 s on one steady device
+                # (measured), i.e. the check was racing its own sampler, not the deployment.
+                #
+                # SAMPLE_PERIOD_MS is derived from measurement, not chosen. A 24 ms whole-device
+                # trace of THIS pod running real prompts (nvidia-smi --query-gpu=memory.used on
+                # the host, 2026-11-19) gives the loaded window directly:
+                #
+                #   prompt | at or above 4000 MiB | at or above 5000 MiB | peak  | rise over pre-prompt
+                #     1    |        1.40 s        |        0.91 s        | 5253  |      +1942 MiB
+                #     2    |        1.97 s        |        1.23 s        | 5259  |      +1828 MiB
+                #
+                # So the checkpoint IS fully resident, for roughly a second or two. The old
+                # ~1.3-1.5 s loop held 0-1 samples inside that window and could miss a 1.22 s
+                # prompt entirely; a 100 ms period holds 9-12. That is why the threshold below
+                # stays at 1024 MiB: the measured rise is +1828 MiB, an 804 MiB margin, so the
+                # sampler -- not the threshold -- was the defect.
+                #
+                # The run REPORTS the sample count, the largest gap and the prompt duration, so a
+                # reader can see the margin instead of assuming it. HISTORY_PERIOD_MS stays at 1 s
+                # because the /history poll costs a local HTTP round trip and completion state is
+                # stable for far longer than the load window the peak has to be caught in -- the
+                # completion poll must not set the device-sampling cadence.
+                SAMPLE_PERIOD_MS=100
+                HISTORY_PERIOD_MS=1000
+                started_ns=$(date +%s%N)
+                last_ns=${started_ns}
+                max_gap_ms=0
+                samples=0
+                next_history_ns=0
                 while :; do
+                  sample_ns=$(date +%s%N)
                   used=$(vram_used_mib)
                   [ "${used}" -gt "${peak}" ] && peak="${used}"
-                  hist=$(curl -sf "${API}/history/${id}" || true)
-                  printf '%s' "${hist}" | grep -qE '"status_str" *: *"success"' && break
-                  if printf '%s' "${hist}" | grep -qE '"status_str" *: *"error"'; then
-                    echo "the prompt reported an error:" >&2
-                    printf '%s\n' "${hist}" >&2
-                    exit 1
+                  samples=$((samples + 1))
+                  gap_ms=$(( (sample_ns - last_ns) / 1000000 ))
+                  [ "${gap_ms}" -gt "${max_gap_ms}" ] && max_gap_ms=${gap_ms}
+                  last_ns=${sample_ns}
+                  # The /history poll rides the same loop on a slower cadence: it costs a local
+                  # HTTP round trip, and the completion state is stable for far longer than the
+                  # load window the peak has to be caught in.
+                  if [ "${sample_ns}" -ge "${next_history_ns}" ]; then
+                    hist=$(curl -sf "${API}/history/${id}" || true)
+                    printf '%s' "${hist}" | grep -qE '"status_str" *: *"success"' && break
+                    if printf '%s' "${hist}" | grep -qE '"status_str" *: *"error"'; then
+                      echo "the prompt reported an error:" >&2
+                      printf '%s\n' "${hist}" >&2
+                      exit 1
+                    fi
+                    next_history_ns=$(( sample_ns + HISTORY_PERIOD_MS * 1000000 ))
                   fi
-                  if [ "${waited}" -ge 240 ]; then
+                  elapsed_ms=$(( (sample_ns - started_ns) / 1000000 ))
+                  if [ "${elapsed_ms}" -ge 240000 ]; then
                     echo "prompt ${id} did not complete within 240s" >&2
                     exit 1
                   fi
-                  sleep 1
-                  waited=$((waited + 1))
+                  # Pace the sampler: sleep only the part of the period this sample did not spend,
+                  # so a slow nvidia-smi degrades into back-to-back samples instead of stretching
+                  # the period without bound.
+                  left_ms=$(( SAMPLE_PERIOD_MS - ($(date +%s%N) - sample_ns) / 1000000 ))
+                  [ "${left_ms}" -gt 0 ] && sleep "0.$(printf '%03d' "${left_ms}")"
                 done
+                prompt_ms=$(( ($(date +%s%N) - started_ns) / 1000000 ))
 
                 # 4. The weights must be back OFF the card. Unloading is not synchronous with the HTTP
                 #    reply, so settle: the best reading inside 60s is the one that counts.
@@ -344,16 +395,27 @@ comfyui:
                   waited=$((waited + 2))
                 done
                 echo "VRAM before=${before} MiB peak=${peak} MiB settled=${settled} MiB"
+                echo "prompt ${prompt_ms} ms; ${samples} samples at a ${SAMPLE_PERIOD_MS} ms period, largest gap ${max_gap_ms} ms"
+                # RECORD the measurement, not only the verdict. The check runner keeps a step's
+                # stdout only when the step FAILS -- a measured PASS carries `exit=0` and nothing
+                # else -- so without this line the observed peak and margin have no home on a green
+                # run, which is exactly the evidence this check exists to produce. Written to the
+                # state volume so it survives the run, and it records failures too.
+                printf '%s prompt_ms=%s samples=%s max_gap_ms=%s period_ms=%s before_mib=%s peak_mib=%s settled_mib=%s rise_mib=%s retained_mib=%s\n' \
+                  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${prompt_ms}" "${samples}" "${max_gap_ms}" \
+                  "${SAMPLE_PERIOD_MS}" "${before}" "${peak}" "${settled}" \
+                  "$((peak - before))" "$((settled - before))" \
+                  >> "${BASE}/charly-vram-offload.log" 2>/dev/null || true
 
                 if [ $((peak - before)) -lt "${LOADED_MIB}" ]; then
-                  echo "the prompt did not put the checkpoint on the card (peak rose $((peak - before)) MiB, expected >= ${LOADED_MIB}); the check would prove nothing" >&2
+                  echo "the prompt did not put the checkpoint on the card (peak rose $((peak - before)) MiB, expected >= ${LOADED_MIB}): ${samples} samples ${max_gap_ms} ms apart over a ${prompt_ms} ms prompt, so the load was not missed between samples; the check would prove nothing" >&2
                   exit 1
                 fi
                 if [ $((settled - before)) -gt "${RETAINED_MIB}" ]; then
                   echo "the model is still pinned in VRAM after the prompt: settled ${settled} MiB is $((settled - before)) MiB above the pre-prompt ${before} MiB (tolerance ${RETAINED_MIB})" >&2
                   exit 1
                 fi
-                echo "the checkpoint was loaded and released: settled within $((settled - before)) MiB of the pre-prompt reading"
+                echo "the checkpoint was loaded and released: peak rose $((peak - before)) MiB against the ${LOADED_MIB} MiB threshold (margin $((peak - before - LOADED_MIB)) MiB) and settled within $((settled - before)) MiB of the pre-prompt reading (tolerance ${RETAINED_MIB} MiB)"
             - run: write the runtime check that the emitted launch line still carries every flag the recipe promises
               write: /opt/comfyui/check-launch-flags.sh
               mode: "0755"
@@ -369,8 +431,8 @@ comfyui:
                 # go green on itself while the launcher drifted underneath it.
                 #
                 # It isolates the LAUNCH COMMAND, never the whole file: the rationale comment block
-                # above the launch NAMES all three flags in prose, so a whole-file grep passes on a
-                # launcher that has already lost the flag (measured: `grep -q -- --enable-dynamic-vram`
+                # above the launch NAMES the flags in prose, so a whole-file grep passes on a
+                # launcher that has already lost one (measured: `grep -q -- --disable-smart-memory`
                 # exits 0 on a launch line that no longer passes it). Comments are stripped and the
                 # backslash continuations joined, so the assertion sees the one command supervisord runs.
                 LAUNCHER=/opt/comfyui/start-comfyui.sh
@@ -394,7 +456,7 @@ comfyui:
                 # The promise: the flags the recipe argues for, one per line of the decision above
                 # the launch. Add a flag here when the launcher gains one -- this list IS the contract.
                 missing=
-                for flag in --enable-dynamic-vram --disable-smart-memory --vram-headroom; do
+                for flag in --disable-smart-memory --vram-headroom; do
                   case " ${launch} " in
                     *" ${flag} "*) ;;
                     *) missing="${missing}${missing:+ }${flag}" ;;
@@ -405,7 +467,7 @@ comfyui:
                   echo "launch line: ${launch}" >&2
                   exit 1
                 fi
-                echo "launch line carries every promised flag: --enable-dynamic-vram --disable-smart-memory --vram-headroom"
+                echo "launch line carries every promised flag: --disable-smart-memory --vram-headroom"
             - run: write the start script that seeds the state tree, ensures the model, then execs the server
               write: /opt/comfyui/start-comfyui.sh
               mode: "0755"
@@ -452,8 +514,8 @@ comfyui:
                 else
                   touch "${BASE}/model-set.done"
                 fi
-                # Two ORTHOGONAL flags, not two names for one mechanism — each verified against
-                # ComfyUI v0.45.3's own source (the tag this candy pins):
+                # The memory flags, each verified against ComfyUI v0.45.3's own source (the tag
+                # this candy pins):
                 # --disable-smart-memory: use the card while a prompt runs, give it back when the
                 # prompt ends. execution.py runs, on the SUCCESS path of every prompt,
                 # `if comfy.model_management.DISABLE_SMART_MEMORY: unload_all_models()`, and
@@ -462,18 +524,6 @@ comfyui:
                 # `keep_loaded` is offloaded to CPU rather than kept. Measured on a 16 GB card:
                 # 2,978 MiB VRAM idle before a generation, 3,100 MiB idle after one (peak 5,980 MiB),
                 # against 10,954 MiB for a server that keeps the weights resident between prompts.
-                # --enable-dynamic-vram: the DynamicVRAM gate, NOT a duplicate of the above.
-                # cli_args.py's `enables_dynamic_vram()` already returns true here — it is false
-                # only under --disable-dynamic-vram, --highvram, --gpu-only, --novram or --cpu, none
-                # of which this launcher passes — and main.py consults that predicate twice: for
-                # `comfy_aimdo.control.init()` (the headroom / NVML-pressure engine) and for
-                # `if args.enable_dynamic_vram or (enables_dynamic_vram() and
-                # dynamic_vram_supported()):`, which initializes per-device VRAM headroom. Passing
-                # it changes no allocation policy on this pod today (torch 2.12.0+cu130 and an
-                # NVIDIA device, so `dynamic_vram_supported()` is already true); its real effect is
-                # to hold that gate open if a future ComfyUI default flips. It is passed because the
-                # accepted VRAM measurement — and the running image's own start-comfyui.sh —
-                # launched with it, and this recipe describes that measured configuration.
                 # --vram-headroom: how much VRAM ComfyUI keeps COMPLETELY free and unused, counting
                 # VRAM held by other apps. From v0.45.3's own comfy/cli_args.py: "Set the amount of vram
                 # in GB for DynamicVRAM to maintain as extra headroom above default. ComfyUI will try
@@ -482,9 +532,25 @@ comfyui:
                 # who runs other work beside ComfyUI sets it so a generation cannot eat the last
                 # gigabyte. Declared as COMFYUI_VRAM_HEADROOM, default 1, overridable per deploy
                 # (`charly config comfyui -e COMFYUI_VRAM_HEADROOM=4`).
+                #
+                # `--enable-dynamic-vram` is deliberately NOT passed, and it is NOT the guard's fix.
+                # It is INERT on this pod: ComfyUI's DynamicVRAM path is default-on here, and the
+                # journal line "Model BaseModel prepared for dynamic VRAM loading. 1639MB Staged."
+                # appears on the same prompt WITH and WITHOUT the flag (measured on the R10 bed,
+                # 2026-11-19: the red runs carried the flag, the green runs did not, and both
+                # staged). It was added to satisfy a spec that listed three flags, and its own
+                # rationale already said it "changes no allocation policy on this pod today"; a flag
+                # that changes nothing, kept true only by a guard, is weight rather than capability.
+                #
+                # What DID break `comfyui-vram-offload` was that guard's own sampling period. The
+                # load rides the card for about the prompt's duration -- a 24 ms whole-device trace
+                # shows the card at or above 5000 MiB for 0.91 s and 1.23 s on two runs, peaking
+                # +1942 and +1828 MiB over the pre-prompt reading -- and a ~1.3-1.5 s loop could
+                # miss a 1.22 s prompt entirely. The fix is the 100 ms sampler in
+                # check-vram-offload.sh above.
                 exec python /opt/comfyui/main.py --listen 0.0.0.0 --port 8188 \
                   --enable-manager --base-directory "${BASE}" \
-                  --enable-dynamic-vram --disable-smart-memory \
+                  --disable-smart-memory \
                   --vram-headroom "${COMFYUI_VRAM_HEADROOM}"
             - check: the image records the ComfyUI release tag it was built from
               id: comfyui-pinned-ref
@@ -582,10 +648,10 @@ comfyui:
                 - runtime
               # The guard for the flags themselves, where `comfyui-vram-offload` guards the EFFECT
               # of one of them: it reads the baked start-comfyui.sh, isolates the exec line, and
-              # names the flag that is missing. `--enable-dynamic-vram` is default-on for this
-              # configuration, so nothing else in the image would notice its removal -- that is
-              # exactly the claim this step makes checkable. Logic lives in the baked script: an
-              # assert-only step carries no shell variables at all (measured).
+              # names the flag that is missing. `--vram-headroom` only sets how much VRAM stays
+              # free, so nothing else in the image would notice its removal -- that is exactly the
+              # claim this step makes checkable. Logic lives in the baked script: an assert-only
+              # step carries no shell variables at all (measured).
               command: /opt/comfyui/check-launch-flags.sh
               exit_status: 0
 
