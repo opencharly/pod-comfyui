@@ -30,7 +30,7 @@ comfyui:
         require:
             - '@github.com/opencharly/layer-supervisord:v2026.271.1817'
         env:
-            COMFYUI_REF: v0.45.3
+            COMFYUI_REF: v0.46.1
             # GB of VRAM kept completely free and unused, counting other apps.
             # Overridable per deploy (`charly config comfyui -e COMFYUI_VRAM_HEADROOM=4`).
             COMFYUI_VRAM_HEADROOM: "1"
