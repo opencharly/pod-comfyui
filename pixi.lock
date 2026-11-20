@@ -42,16 +42,17 @@ environments:
       - pypi: https://download.pytorch.org/whl/cu130/xformers-0.0.36-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/04/4b/29cac41a4d98d144bf5f6d33995617b185d14b22401f75ca86f384e87ff1/h11-0.16.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/05/ff/51969745f31cea6bcd12151e668febcf979656316e67a7755942267c1273/typer-0.29.1-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/08/5e/87c93fc931c38ecc7af223dcbe003b4bab7597b32e3f88c2efe2228e6a13/comfyui_workflow_templates_json-0.1.138-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/0e/b7/a82a49bf88340b837ef6972b508a1604ae377b9e6904b46b10cf5f1cf925/yarl-1.25.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/0f/ea/347345577742b4521ba5c43ddd8ee353225802e89fe5fa7b1fb6caba2379/pycryptodome-4.4.0-cp39-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/11/3c/8740f5b4e1bd57333e4f84265b9b6363da4f7cf70f5622dd1e2fde7a0bd5/alembic-1.20.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/11/8b/672ecbe36e5e59c559fb8f7ffcce935e283184b08a88313da99d3d3cc0d9/comfy_kitchen-0.2.41-cp312-abi3-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/12/33/d1ecd9f4f5f272b36ad7b268e307ba0a59c109d8ad134a231cda780baac9/simpleeval-1.0.8-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/12/3f/ceb1b3b97adf101708f63ed8b0820b199762c9cc888fb129b95e578a58a9/comfyui_workflow_templates_core-0.3.398-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/18/a6/175dbba852d77cf184dd6095a23dd0fe654898be74fb9dc6bfa16e89088f/python_socks-3.2.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/19/49/4df9123aafa7b539317bf6d342cb6d227e49f7a35b99c287a6109b13dd93/numpy-2.2.6-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/1a/f1/b474e930c4d910328780e3940da76f5aa5cbc48ce1fc14e44d239d9ea9db/cryptography-50.0.2-cp311-abi3-manylinux_2_28_x86_64.whl
-      - pypi: https://files.pythonhosted.org/packages/1d/a0/ede64c8e0723d0627a862351bdf4d556565d78760af1cb46481dede5117a/comfyui_workflow_templates_media_assets_02-0.1.32-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/1d/7b/d9e417431eda3072fb418df35f9e0c9641c3eb408946371f2f9d008c3188/comfyui_workflow_templates_core-0.3.403-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/1d/9f/5fb606de05a1f7b05242d4c4426a0c6de0792519a513ae7e2d759cdadde9/comfyui_workflow_templates-0.11.112-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/21/7a/d349443e634d56ab3c1d5b279f0d4858e29905234de03171f840258e4a83/comfy_aimdo-0.6.0-cp39-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/28/50/f203ff3a3ddfe19308efc83c5a3a29ed02bf786732ec35e68bf9162f3365/safetensors-0.8.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/2a/09/f8d8f8f31e4483c10a906437b4ce31bdf3d6d417b73fe33f1a8b59e34228/einops-0.8.2-py3-none-any.whl
@@ -60,7 +61,6 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/2e/24/d1558f3b68b1d26e706813b1d10aa1d785e4698c425af8db8edc3dced472/nvidia_cuda_runtime-13.0.96-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/30/b1/b7507bb9815d403927c8dd51d4158ed2e11751a92dbc118a044f247b6848/triton-3.7.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/31/7d/164b7ffc8624fe9efb4221bf9af485d5c1e41b9ae118045d2b6dc5457d8b/click-8.5.1-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/31/b0/af8551413a694b581e985c3e1940415d5f06f89858ae32d4b16dfc925664/comfyui_workflow_templates-0.11.107-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/32/51/395d225ef36f5a50d8e548dcd3141bfdbcd31fb6eed859022c573d2c4d66/aiohttp-3.14.5-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/32/d1/a3652fe2c19134d0d15922177821d863cbd7e842d53a21bbe7e8e3a1b5ac/certifi-2026.10.23-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/33/6d/737d164b4837a9bbd202f5ae3078975f0525a55730fe871d8ed4e3b952b0/nvidia_cuda_cupti-13.0.85-py3-none-manylinux_2_25_x86_64.whl
@@ -87,11 +87,13 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/57/b2/453099f5f3b698d7d0eab38916aac44c7f76229f451709e2eb9db6615dcd/cuda_toolkit-13.0.2-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/58/a2/bb081bab032533a855d44de1d56f8e8426114ff1ba5d1f07a438a0a654f8/idna-3.20-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/5f/67/cba3777620cdacb99102da4042883709c41c709f4b6323c10781a9c3aa34/nvidia_cusolver-12.0.4.66-py3-none-manylinux_2_27_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/60/07/4f1733de4ebf6cb42083d4e5864addea90b411b678db4f38d6b55d601b92/comfyui_frontend_package-1.59.6-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/60/d1/38f3a3405989a89ac18390803e70c6ad7c7760da4f9b83cbeca0c44a0c72/python_dotenv-1.2.4-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/62/a1/3d680cbfd5f4b8f15abc1d571870c5fc3e594bb582bc3b64ea099db13e56/jinja2-3.1.6-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/63/e0/cec6865dfe88cb48fedd4b20aed6af5158e41092adcbf3e028bcc6ec2108/markupsafe-3.0.4-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/64/b4/17d4b0b2a2dc85a6df63d1157e028ed19f90d4cd97c36717afef2bc2f395/attrs-26.1.0-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/65/23/181868b288ab95a5b873fe24616ba4b3b44e94d48751b5fcc220e8a55286/comfyui_workflow_templates_media_assets_02-0.1.35-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/66/05/6a2ab20fefb584d469d2daaf9d8cb65661a8fe938b850cb2534c016f1ae2/cuda_bindings-13.5.0-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/67/f4/58e4e91b6919367c7aafb8e36fce9aad1a3047e536bf7e2fd560927d3a4c/nvidia_nccl_cu13-2.29.7-py3-none-manylinux_2_18_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/69/90/f63fb5873511e014207a475e2bb4e8b2e570d655b00ac19a9a0ca0a385ee/jsonschema-4.26.0-py3-none-any.whl
@@ -119,7 +121,6 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/91/71/f314841697a1d52af3e1ea7c5e1c3f09685b64ae4c58ff16b605a866255d/pygithub-2.10.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/92/9d/c4e665119135114480843e7ab388fa94d8480650450e6f8e26b70d323a4c/urllib3-2.8.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/95/95/86342356ff5953b3fb06f7ef7c5bee212d45e770abc7218d451b9148313c/cffi-2.1.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
-      - pypi: https://files.pythonhosted.org/packages/98/99/e52a22b0bae8d9fe97a7ef59cd4fc4cdbbc28078affdd7d3871b954927f2/comfyui_workflow_templates_json-0.1.133-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/99/91/8acff4f5e50511b911bbccb72b8628a49c68ce14148cd9f6431094859a90/annotated_types-0.8.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/a0/36/76fab39973ee11e7f9f357c55138197bb01c86f6502cb76487e3b4f42db0/rpds_py-2026.9.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/a0/61/5c78b91c3143ed5c14207f463aecfc8f9dbb5092fb2869baf37c273b2705/gitdb-4.0.12-py3-none-any.whl
@@ -133,13 +134,12 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/a7/46/feed5492a2def46fee71a52fcbb3b7443a048e402c40bedfaaebcc6fa234/comfyui_workflow_templates_media_other-0.3.229-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/a8/2f/7b57e29836ea8714f81e9898409196f47d772d5ddedddf1592eadb8ab743/nvidia_cufft-12.0.0.61-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/a9/16/7757fb84c819accc7d7e9af5291b261e4abb8627ee040f99e7d35ef2457a/anyio-4.16.0-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/aa/73/565750a7eefe9ca0690aa855a48aaa4a00d71c6bb79886107e078be40030/comfyui_embedded_docs-0.5.16-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/aa/40/2f7abe41d897d2457e39107038ccec5247f9860e027c7f07ae89832fd781/comfyui_embedded_docs-0.5.17-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/ad/a2/ca8c8cd9333914ccb1f1acc3077231d253fd78c06ccc5bd89f6036674b3b/blake3-1.0.11-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/af/c2/ce417c397afa5181f0e3c6ff01a4d01639414e1adef08730d97571297151/httpcore2-2.16.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/af/f4/5ddd0416e9619233b20e2a34c47d2359d4ac6b17a17f8bf59e0bfe5b93c3/comfy_angle-0.1.1-py3-none-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b3/bb/d71d6da82763528c2c2ed6b59a9d6142c6595545a4c448e2085d155e88c2/gguf-0.19.0-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/b4/a4/601b1471318e8c72d08d8a715417ef71056729fda0148b3e509091ba3e15/comfyui_frontend_package-1.58.5-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b5/70/5d8df3b09e25bce090399cf48e452d25c935ab72dad19406c77f4e828045/psutil-7.2.2-cp36-abi3-manylinux2010_x86_64.manylinux_2_12_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/b6/80/7cf8bbe4a8844198fa64481ffc6642003770999b9ead27e99fc03484989a/cuda_pathfinder-1.9.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b6/ae/315bbeee126a769cbde43cf4908acb4b40408d8bf8bbf334dd7368d8dadf/pycparser-3.12-py3-none-any.whl
@@ -503,6 +503,11 @@ packages:
   - annotated-doc>=0.0.2
   - colorama ; sys_platform == 'win32'
   requires_python: '>=3.10'
+- pypi: https://files.pythonhosted.org/packages/08/5e/87c93fc931c38ecc7af223dcbe003b4bab7597b32e3f88c2efe2228e6a13/comfyui_workflow_templates_json-0.1.138-py3-none-any.whl
+  name: comfyui-workflow-templates-json
+  version: 0.1.138
+  sha256: 4156f59a4cddb93c4e48567420fe21212e311ab0af95a7844c582127686df794
+  requires_python: '>=3.9'
 - pypi: https://files.pythonhosted.org/packages/0e/b7/a82a49bf88340b837ef6972b508a1604ae377b9e6904b46b10cf5f1cf925/yarl-1.25.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
   name: yarl
   version: 1.25.1
@@ -547,11 +552,6 @@ packages:
   version: 1.0.8
   sha256: c9c4ff42879ebf0c05f6562cb81031869948916be343bcc950b81fcc081fe9ce
   requires_python: '>=3.9'
-- pypi: https://files.pythonhosted.org/packages/12/3f/ceb1b3b97adf101708f63ed8b0820b199762c9cc888fb129b95e578a58a9/comfyui_workflow_templates_core-0.3.398-py3-none-any.whl
-  name: comfyui-workflow-templates-core
-  version: 0.3.398
-  sha256: 6a9b01bc962eddbe003a661ed8d229c566afe0753ad9c12a12a5becea8f7825a
-  requires_python: '>=3.9'
 - pypi: https://files.pythonhosted.org/packages/18/a6/175dbba852d77cf184dd6095a23dd0fe654898be74fb9dc6bfa16e89088f/python_socks-3.2.1-py3-none-any.whl
   name: python-socks
   version: 3.2.1
@@ -575,10 +575,38 @@ packages:
   - typing-extensions>=4.13.2 ; python_full_version < '3.11'
   - bcrypt>=3.1.5 ; extra == 'ssh'
   requires_python: '!=3.9.0,>=3.9,!=3.9.1'
-- pypi: https://files.pythonhosted.org/packages/1d/a0/ede64c8e0723d0627a862351bdf4d556565d78760af1cb46481dede5117a/comfyui_workflow_templates_media_assets_02-0.1.32-py3-none-any.whl
-  name: comfyui-workflow-templates-media-assets-02
-  version: 0.1.32
-  sha256: 1f61bf9258b96f0fa928a32c976d0c5a0daa9488da69852f1e4c9dbb22738670
+- pypi: https://files.pythonhosted.org/packages/1d/7b/d9e417431eda3072fb418df35f9e0c9641c3eb408946371f2f9d008c3188/comfyui_workflow_templates_core-0.3.403-py3-none-any.whl
+  name: comfyui-workflow-templates-core
+  version: 0.3.403
+  sha256: 665d3427dda3aaef533adf00ab3fe79d20b240de8c7ac1ce4f2cc7738521979c
+  requires_python: '>=3.9'
+- pypi: https://files.pythonhosted.org/packages/1d/9f/5fb606de05a1f7b05242d4c4426a0c6de0792519a513ae7e2d759cdadde9/comfyui_workflow_templates-0.11.112-py3-none-any.whl
+  name: comfyui-workflow-templates
+  version: 0.11.112
+  sha256: e2b5d31557a2cf2e162c3211dd260ab371f02d948ca3f06b5f11a9af470ec903
+  requires_dist:
+  - comfyui-workflow-templates-core==0.3.403
+  - comfyui-workflow-templates-json==0.1.138
+  - comfyui-workflow-templates-media-api==0.3.84
+  - comfyui-workflow-templates-media-video==0.3.101
+  - comfyui-workflow-templates-media-image==0.3.160
+  - comfyui-workflow-templates-media-other==0.3.229
+  - comfyui-workflow-templates-media-assets-01==0.1.48
+  - comfyui-workflow-templates-media-assets-02==0.1.35
+  - comfyui-workflow-templates-json==0.1.138 ; extra == 'json'
+  - comfyui-workflow-templates-media-assets-01==0.1.48 ; extra == 'assets'
+  - comfyui-workflow-templates-media-assets-02==0.1.35 ; extra == 'assets'
+  - comfyui-workflow-templates-media-api==0.3.84 ; extra == 'api'
+  - comfyui-workflow-templates-media-video==0.3.101 ; extra == 'video'
+  - comfyui-workflow-templates-media-image==0.3.160 ; extra == 'image'
+  - comfyui-workflow-templates-media-other==0.3.229 ; extra == 'other'
+  - comfyui-workflow-templates-json==0.1.138 ; extra == 'all'
+  - comfyui-workflow-templates-media-assets-01==0.1.48 ; extra == 'all'
+  - comfyui-workflow-templates-media-assets-02==0.1.35 ; extra == 'all'
+  - comfyui-workflow-templates-media-api==0.3.84 ; extra == 'all'
+  - comfyui-workflow-templates-media-video==0.3.101 ; extra == 'all'
+  - comfyui-workflow-templates-media-image==0.3.160 ; extra == 'all'
+  - comfyui-workflow-templates-media-other==0.3.229 ; extra == 'all'
   requires_python: '>=3.9'
 - pypi: https://files.pythonhosted.org/packages/21/7a/d349443e634d56ab3c1d5b279f0d4858e29905234de03171f840258e4a83/comfy_aimdo-0.6.0-cp39-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
   name: comfy-aimdo
@@ -678,34 +706,6 @@ packages:
   version: 8.5.1
   sha256: 8bb5376d2006950386f8c6427613334a2acadc5f559cb80e638d00b4df957e37
   requires_python: '>=3.10'
-- pypi: https://files.pythonhosted.org/packages/31/b0/af8551413a694b581e985c3e1940415d5f06f89858ae32d4b16dfc925664/comfyui_workflow_templates-0.11.107-py3-none-any.whl
-  name: comfyui-workflow-templates
-  version: 0.11.107
-  sha256: 2084e434044a959da7f1affc2d75c5c84697bf5a1d2e88c689d01a70a57389f8
-  requires_dist:
-  - comfyui-workflow-templates-core==0.3.398
-  - comfyui-workflow-templates-json==0.1.133
-  - comfyui-workflow-templates-media-api==0.3.84
-  - comfyui-workflow-templates-media-video==0.3.101
-  - comfyui-workflow-templates-media-image==0.3.160
-  - comfyui-workflow-templates-media-other==0.3.229
-  - comfyui-workflow-templates-media-assets-01==0.1.48
-  - comfyui-workflow-templates-media-assets-02==0.1.32
-  - comfyui-workflow-templates-json==0.1.133 ; extra == 'json'
-  - comfyui-workflow-templates-media-assets-01==0.1.48 ; extra == 'assets'
-  - comfyui-workflow-templates-media-assets-02==0.1.32 ; extra == 'assets'
-  - comfyui-workflow-templates-media-api==0.3.84 ; extra == 'api'
-  - comfyui-workflow-templates-media-video==0.3.101 ; extra == 'video'
-  - comfyui-workflow-templates-media-image==0.3.160 ; extra == 'image'
-  - comfyui-workflow-templates-media-other==0.3.229 ; extra == 'other'
-  - comfyui-workflow-templates-json==0.1.133 ; extra == 'all'
-  - comfyui-workflow-templates-media-assets-01==0.1.48 ; extra == 'all'
-  - comfyui-workflow-templates-media-assets-02==0.1.32 ; extra == 'all'
-  - comfyui-workflow-templates-media-api==0.3.84 ; extra == 'all'
-  - comfyui-workflow-templates-media-video==0.3.101 ; extra == 'all'
-  - comfyui-workflow-templates-media-image==0.3.160 ; extra == 'all'
-  - comfyui-workflow-templates-media-other==0.3.229 ; extra == 'all'
-  requires_python: '>=3.9'
 - pypi: https://files.pythonhosted.org/packages/32/51/395d225ef36f5a50d8e548dcd3141bfdbcd31fb6eed859022c573d2c4d66/aiohttp-3.14.5-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
   name: aiohttp
   version: 3.14.5
@@ -999,6 +999,11 @@ packages:
   - nvidia-nvjitlink
   - nvidia-cusparse
   requires_python: '>=3'
+- pypi: https://files.pythonhosted.org/packages/60/07/4f1733de4ebf6cb42083d4e5864addea90b411b678db4f38d6b55d601b92/comfyui_frontend_package-1.59.6-py3-none-any.whl
+  name: comfyui-frontend-package
+  version: 1.59.6
+  sha256: 7564e716da2d1e122612f067bcffda6c3b9bc766f3b9f8c85fc44cf1d9c54f85
+  requires_python: '>=3.9'
 - pypi: https://files.pythonhosted.org/packages/60/d1/38f3a3405989a89ac18390803e70c6ad7c7760da4f9b83cbeca0c44a0c72/python_dotenv-1.2.4-py3-none-any.whl
   name: python-dotenv
   version: 1.2.4
@@ -1028,6 +1033,11 @@ packages:
   name: attrs
   version: 26.1.0
   sha256: c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309
+  requires_python: '>=3.9'
+- pypi: https://files.pythonhosted.org/packages/65/23/181868b288ab95a5b873fe24616ba4b3b44e94d48751b5fcc220e8a55286/comfyui_workflow_templates_media_assets_02-0.1.35-py3-none-any.whl
+  name: comfyui-workflow-templates-media-assets-02
+  version: 0.1.35
+  sha256: 84821dd45fdced5e587ef0d11a69f34aa2c0b5796294a463a7a7d1e004ce1f76
   requires_python: '>=3.9'
 - pypi: https://files.pythonhosted.org/packages/66/05/6a2ab20fefb584d469d2daaf9d8cb65661a8fe938b850cb2534c016f1ae2/cuda_bindings-13.5.0-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
   name: cuda-bindings
@@ -1510,11 +1520,6 @@ packages:
   requires_dist:
   - pycparser ; implementation_name != 'PyPy'
   requires_python: '>=3.10'
-- pypi: https://files.pythonhosted.org/packages/98/99/e52a22b0bae8d9fe97a7ef59cd4fc4cdbbc28078affdd7d3871b954927f2/comfyui_workflow_templates_json-0.1.133-py3-none-any.whl
-  name: comfyui-workflow-templates-json
-  version: 0.1.133
-  sha256: 8d09bfcff04b8f76cc7ebfc18c4fc1de4f06c33c7c1b2bdeeae16e54c21548de
-  requires_python: '>=3.9'
 - pypi: https://files.pythonhosted.org/packages/99/91/8acff4f5e50511b911bbccb72b8628a49c68ce14148cd9f6431094859a90/annotated_types-0.8.0-py3-none-any.whl
   name: annotated-types
   version: 0.8.0
@@ -1674,10 +1679,10 @@ packages:
   - typing-extensions>=4.16.0 ; python_full_version < '3.15'
   - trio>=0.32.0 ; extra == 'trio'
   requires_python: '>=3.10'
-- pypi: https://files.pythonhosted.org/packages/aa/73/565750a7eefe9ca0690aa855a48aaa4a00d71c6bb79886107e078be40030/comfyui_embedded_docs-0.5.16-py3-none-any.whl
+- pypi: https://files.pythonhosted.org/packages/aa/40/2f7abe41d897d2457e39107038ccec5247f9860e027c7f07ae89832fd781/comfyui_embedded_docs-0.5.17-py3-none-any.whl
   name: comfyui-embedded-docs
-  version: 0.5.16
-  sha256: 5bea84eea69d6370c37b725e97ed9be3729a417b41d0e17a77709001cb959b96
+  version: 0.5.17
+  sha256: 2e8744f0c5c958b36c8af036a0c55425173ab1fde4fdd0b30b0b5a50d7e6f495
   requires_python: '>=3.9'
 - pypi: https://files.pythonhosted.org/packages/ad/a2/ca8c8cd9333914ccb1f1acc3077231d253fd78c06ccc5bd89f6036674b3b/blake3-1.0.11-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
   name: blake3
@@ -1719,11 +1724,6 @@ packages:
   - requests>=2.25
   - tqdm>=4.27
   requires_python: '>=3.10'
-- pypi: https://files.pythonhosted.org/packages/b4/a4/601b1471318e8c72d08d8a715417ef71056729fda0148b3e509091ba3e15/comfyui_frontend_package-1.58.5-py3-none-any.whl
-  name: comfyui-frontend-package
-  version: 1.58.5
-  sha256: d1eb47e5a3b71b0191e42b0633c66eb8b362c46c22cd0036524fd1f5ac9096ce
-  requires_python: '>=3.9'
 - pypi: https://files.pythonhosted.org/packages/b5/70/5d8df3b09e25bce090399cf48e452d25c935ab72dad19406c77f4e828045/psutil-7.2.2-cp36-abi3-manylinux2010_x86_64.manylinux_2_12_x86_64.manylinux_2_28_x86_64.whl
   name: psutil
   version: 7.2.2

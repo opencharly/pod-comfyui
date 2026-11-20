@@ -30,7 +30,7 @@ comfyui:
         require:
             - '@github.com/opencharly/layer-supervisord:v2026.271.1817'
         env:
-            COMFYUI_REF: v0.45.3
+            COMFYUI_REF: v0.46.1
             # GB of VRAM kept completely free and unused, counting other apps.
             # Overridable per deploy (`charly config comfyui -e COMFYUI_VRAM_HEADROOM=4`).
             COMFYUI_VRAM_HEADROOM: "1"
@@ -563,6 +563,31 @@ comfyui:
               # "unresolved variables: COMFYUI_REF"). The BED owns the tag value and asserts it
               # against the server's own API; this check asserts the FILE, which needs no env.
               command: test -s /opt/comfyui/.charly-ref && grep -qE '^v[0-9]+\.[0-9]+' /opt/comfyui/.charly-ref
+              exit_status: 0
+            - check: the image carries the exact ComfyUI release tag this candy pins (v0.46.1)
+              id: comfyui-pinned-ref-exact
+              # A LITERAL, not a braced variable: a braced ${...} the check context cannot
+              # resolve makes the step SKIP and a skip reads green (see the check above). This
+              # literal is the in-tree version witness; the bed additionally asserts the
+              # server's own /system_stats version.
+              command: grep -qx 'v0.46.1' /opt/comfyui/.charly-ref
+              exit_status: 0
+            - check: the image's pixi env carries the pinned ComfyUI frontend, templates and docs
+              id: comfyui-pinned-packages
+              # The literal versions are the in-tree witness for the pixi.toml pins (the same
+              # reason as the ref check: a braced variable would make the step SKIP).
+              command: |
+                python3 - <<'PY'
+                from importlib.metadata import version
+                want = {
+                    "comfyui-frontend-package": "1.59.6",
+                    "comfyui-workflow-templates": "0.11.112",
+                    "comfyui-embedded-docs": "0.5.17",
+                }
+                bad = {k: (version(k), v) for k, v in want.items() if version(k) != v}
+                assert not bad, bad
+                print("pinned ComfyUI packages OK")
+                PY
               exit_status: 0
             - check: the start script is present and executable
               id: comfyui-start-script
