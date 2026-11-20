@@ -564,6 +564,14 @@ comfyui:
               # against the server's own API; this check asserts the FILE, which needs no env.
               command: test -s /opt/comfyui/.charly-ref && grep -qE '^v[0-9]+\.[0-9]+' /opt/comfyui/.charly-ref
               exit_status: 0
+            - check: the image carries the exact ComfyUI release tag this candy pins (v0.46.1)
+              id: comfyui-pinned-ref-exact
+              # A LITERAL, not a braced variable: a braced ${...} the check context cannot
+              # resolve makes the step SKIP and a skip reads green (see the check above). This
+              # literal is the in-tree version witness; the bed additionally asserts the
+              # server's own /system_stats version.
+              command: grep -qx 'v0.46.1' /opt/comfyui/.charly-ref
+              exit_status: 0
             - check: the start script is present and executable
               id: comfyui-start-script
               file:
