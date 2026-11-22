@@ -36,3 +36,33 @@ check_one() {
 
 check_one COMFYUI_WORKFLOW_B64 qwen-image-2.1-turbo-t2i.api.json
 check_one IMAGES_EDIT_COMFYUI_WORKFLOW_B64 qwen-image-edit-2511-lightning.api.json
+
+# The node mappings are a second hand-maintained projection of the SAME graph:
+# every node id and key they name must exist in the corresponding workflow file.
+python3 - "${SRC}" "${WF}" <<'PYEOF'
+import json
+import pathlib
+import re
+import sys
+
+src, wfdir = sys.argv[1], sys.argv[2]
+text = pathlib.Path(src).read_text()
+lanes = [
+    ("COMFYUI_WORKFLOW_NODES", "qwen-image-2.1-turbo-t2i.api.json"),
+    ("IMAGES_EDIT_COMFYUI_WORKFLOW_NODES", "qwen-image-edit-2511-lightning.api.json"),
+]
+for var, file in lanes:
+    match = re.search(rf"^[ \t]*{var}: '(.*)'[ \t]*$", text, re.M)
+    if not match:
+        sys.exit(f"no env_provide value for {var}")
+    nodes = json.loads(match.group(1))
+    graph = json.loads((pathlib.Path(wfdir) / file).read_text())
+    for entry in nodes:
+        for node_id in entry.get("node_ids", []):
+            if node_id not in graph:
+                sys.exit(f"{var}: node {node_id} is absent from {file}")
+            key = entry.get("key")
+            if key and key not in graph[node_id].get("inputs", {}):
+                sys.exit(f"{var}: node {node_id} has no input {key!r} in {file}")
+print("node maps match the workflows")
+PYEOF
