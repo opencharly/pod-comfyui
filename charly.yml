@@ -105,6 +105,11 @@ comfyui:
               to: /opt/comfyui/model-manifest.tsv
               mode: "0644"
               run_as: root
+            - run: install the candy manifest so the workflow-provides gate can read its env_provide values
+              copy: charly.yml
+              to: /opt/comfyui/charly.yml
+              mode: "0644"
+              run_as: root
             - run: install the Qwen-Image-2.1 Turbo T2I API workflow
               copy: workflows/qwen-image-2.1-turbo-t2i.api.json
               to: /opt/comfyui/workflows/qwen-image-2.1-turbo-t2i.api.json
@@ -133,6 +138,11 @@ comfyui:
             - run: install the manifest/workflow completeness gate
               copy: scripts/check-model-manifest.sh
               to: /opt/comfyui/check-model-manifest.sh
+              mode: "0755"
+              run_as: root
+            - run: install the workflow-provides drift gate
+              copy: scripts/check-workflow-provides.sh
+              to: /opt/comfyui/check-workflow-provides.sh
               mode: "0755"
               run_as: root
             - run: write the ONE model-fetch helper both the launcher and the fetch script source
@@ -658,15 +668,22 @@ comfyui:
               command: /opt/comfyui/check-model-manifest.sh
               exit_status: 0
 
-            - check: a prompt loads weights and completes without OOM under Dynamic VRAM
+            - check: the env_provide base64 workflow copies equal the committed API workflow files
+              id: comfyui-workflow-provides-match
+              context:
+                - build
+              command: /opt/comfyui/check-workflow-provides.sh
+              exit_status: 0
+
+            - check: a prompt completes without OOM under Dynamic VRAM
               id: comfyui-vram-offload
               context:
                 - runtime
               # Dynamic VRAM (comfy_aimdo) faults weights in per layer and evicts under pressure;
-              # there is no post-prompt release contract. This check runs one small generation and
-              # asserts the load DELTA (>= 1 GiB), attributable to this deployment even on a shared
-              # card. The launch-flag contract (no legacy mode flags) is asserted by
-              # comfyui-launch-flags; together they fail without the Dynamic VRAM cutover.
+              # it also KEEPS a model resident, so a per-run load delta is not a contract. This
+              # check runs one small generation, asserts a successful completion, and records the
+              # device peak. The launch-flag contract (no legacy mode flags) is asserted by
+              # comfyui-launch-flags.
               command: /opt/comfyui/check-vram-offload.sh
               exit_status: 0
 

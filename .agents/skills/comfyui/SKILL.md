@@ -87,9 +87,9 @@ The launcher passes exactly one memory knob, `--vram-headroom "${COMFYUI_VRAM_HE
 a memory bound.
 
 Two checks defend the contract:
-- `comfyui-vram-offload` runs one small prompt and asserts the load DELTA (>= 1 GiB) and a
-  successful completion. It does NOT assert a post-prompt release; Dynamic VRAM deliberately
-  keeps what fits.
+- `comfyui-vram-offload` runs one small prompt, asserts a successful completion, and records
+  the device peak. It does NOT assert a per-run load delta or a post-prompt release: Dynamic
+  VRAM keeps a model resident, so a warm run legitimately shows little or no rise.
 - `comfyui-launch-flags` isolates the `exec` line and requires `--vram-headroom` while
   forbidding every legacy mode flag. It fails on the pre-cutover launcher.
 
@@ -107,7 +107,9 @@ each sha256 before moving a file into place, and an existing file is skipped. Th
 ~128 GiB (the Qwen-Image-2.1/Edit-2511, Z-Image-Turbo bf16/int8 and Wan 2.2 files plus the
 required companions `qwen3vl_8b`, the t2i PE and the Wan low-noise expert). The build-time
 `comfyui-model-manifest-complete` check fails when a shipped API workflow references a model
-with no manifest row.
+with no manifest row, and `comfyui-workflow-provides-match` decodes each `*_WORKFLOW_B64`
+env_provide value and byte-compares it to the committed `workflows/*.api.json` file so the
+transport copy cannot drift.
 
 The shared XDG model store is a deploy overlay, not a candy field: a candy may not pin a host
 path. Bind `$XDG_DATA_HOME/charly/models/comfyui/models` at `/home/user/ComfyUI/models` and
