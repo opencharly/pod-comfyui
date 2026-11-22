@@ -1,0 +1,51 @@
+# Canonical ComfyUI model manifest.
+#
+# Format: <subdir>/<filename>|<url>|<sha256>
+# The launcher copies this file to $HOME/ComfyUI/model-set.manifest; the fetch
+# script verifies every sha256 before moving the file into place. Order is
+# smallest-first so the bounded mechanism check sees a landed file quickly.
+# Blank lines and lines starting with # are ignored by the fetch/check scripts.
+#
+# Sizes (GiB) are for the operator's disk budget, not parsed by the fetcher:
+#   qwen_image_edit_2511_int8_convrot            19.09
+#   wan2.2_t2v_{high,low}_noise_14B_fp8_scaled   13.31 each
+#   umt5_xxl_fp8_e4m3fn_scaled                    6.27
+#   z_image_turbo_bf16                           11.46
+#   wan2.2_ti2v_5B_fp16                           9.31
+#   qwen3vl_8b_int8_convrot                       8.71
+#   qwen3.5_9b_qwen_image_2.1_pe_{i2i,t2i}        8.82 each
+#   qwen_2.5_vl_7b_fp8_scaled                     8.74
+#   qwen3_4b (bf16)                               7.49
+#   qwen_image_2.1_turbo_int8_convrot              6.76
+#   z_image_turbo_int8_convrot / qwen_3_4b_fp8     6.20 / 5.63 (already installed)
+#   vae + LoRA files                             <1.5 each
+# Core total for all rows below is ~127.94 GiB.
+#
+# Existing files are listed too: fetch_verified() returns immediately when the
+# destination already exists, so this file is the single source for every model.
+
+loras/pytorch_lora_weights.safetensors|https://huggingface.co/lightx2v/Qwen-Image-2.1-Lightning/resolve/main/pytorch_lora_weights.safetensors|53c69320d4163da51032f90275074028cb098556039c72b45f8dce9f0f9e34a3
+vae/qwen_image_vae.safetensors|https://huggingface.co/Comfy-Org/Qwen-Image/resolve/main/split_files/vae/qwen_image_vae.safetensors|a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f
+vae/wan_2.1_vae.safetensors|https://huggingface.co/Comfy-Org/Wan-2.2/resolve/main/split_files/vae/wan_2.1_vae.safetensors|2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b
+loras/qwen-image-edit-2511-multiple-angles-lora.safetensors|https://huggingface.co/fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA/resolve/main/qwen-image-edit-2511-multiple-angles-lora.safetensors|42426ded4e25fd22879d9e198b857556445ef4ca56e8da3246d0345155bb6765
+vae/ae.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/vae/ae.safetensors|afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38
+vae/qwen_image_2.1_vae_bf16.safetensors|https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors|bb21f7473051e1ac368515dd3f2e15cd44d7a11748ee8823e1ddca3e4876b7c9
+loras/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors|https://huggingface.co/lightx2v/Qwen-Image-Edit-2511-Lightning/resolve/main/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors|22226e8d05d354bb356627d428809f5afd7819399b077238a2b70a82883a904f
+loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors|https://huggingface.co/Comfy-Org/Wan-2.2/resolve/main/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors|698321cb86bd30c4af06c9b84e656a1048c8cb54e06d50694536fb5de37fde41
+loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors|https://huggingface.co/Comfy-Org/Wan-2.2/resolve/main/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors|ec95216e614b3c132c11bfb387b11feedf62163150ccc9068bca8a189771e75a
+vae/wan2.2_vae.safetensors|https://huggingface.co/Comfy-Org/Wan-2.2/resolve/main/split_files/vae/wan2.2_vae.safetensors|e40321bd36b9709991dae2530eb4ac303dd168276980d3e9bc4b6e2b75fed156
+checkpoints/v1-5-pruned-emaonly-fp16.safetensors|https://huggingface.co/Comfy-Org/stable-diffusion-v1-5-archive/resolve/main/v1-5-pruned-emaonly-fp16.safetensors|e9476a13728cd75d8279f6ec8bad753a66a1957ca375a1464dc63b37db6e3916
+text_encoders/qwen_3_4b_fp8_mixed.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors|72450b19758172c5a7273cf7de729d1c17e7f434a104a00167624cba94f68f15
+diffusion_models/z_image_turbo_int8_convrot.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/diffusion_models/z_image_turbo_int8_convrot.safetensors|be517ebd47c912a5626a588e1aeea43e6be4a43c0cdcd2b48a2a780d9f358635
+text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors|https://huggingface.co/Comfy-Org/Wan-2.1/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors|c3355d30191f1f066b26d93fba017ae9809dce6c627dda5f6a66eaa651204f68
+diffusion_models/qwen_image_2.1_turbo_int8_convrot.safetensors|https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_turbo_int8_convrot.safetensors|8144a0182964aa8403ad6dbc011db837304167d235161b9aabaa8532e967314c
+text_encoders/qwen_3_4b.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors|6c671498573ac2f7a5501502ccce8d2b08ea6ca2f661c458e708f36b36edfc5a
+text_encoders/qwen3vl_8b_int8_convrot.safetensors|https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors|8bfd0f6e12abf2d2d697ecc888e5e90b0d6741d6708f05799f53afa560452e8f
+text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors|https://huggingface.co/Comfy-Org/Hunyuan-Video-1.5/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors|cb5636d852a0ea6a9075ab1bef496c0db7aef13c02350571e388aea959c5c0b4
+text_encoders/qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors|https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors|32707d01b427e488af252b95c551989aad59f9fec611a694f5db6bde7f0f1f6c
+text_encoders/qwen3.5_9b_qwen_image_2.1_pe_t2i.int8_convrot.safetensors|https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3.5_9b_qwen_image_2.1_pe_t2i.int8_convrot.safetensors|9182abae56fe05459840a86d22abd21f972061c92fce032630af680c8c5178d3
+diffusion_models/wan2.2_ti2v_5B_fp16.safetensors|https://huggingface.co/Comfy-Org/Wan-2.2/resolve/main/split_files/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors|456f901338bd9eadbded3828b819109a9b68e8a525ca5cf8d0049a69fcfeca1e
+diffusion_models/z_image_turbo_bf16.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors|2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6
+diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors|https://huggingface.co/Comfy-Org/Wan-2.2/resolve/main/split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors|cad711ae211c8b23455ec68cd6a190a33a3d874234a77eb57266d73f8f0e6c9f
+diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors|https://huggingface.co/Comfy-Org/Wan-2.2/resolve/main/split_files/diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors|e71b96d7c82e638694c5e7fb98fac4bfb0e4ddc5fbbb4b1df40da8f0f1278a97
+diffusion_models/qwen_image_edit_2511_int8_convrot.safetensors|https://huggingface.co/Comfy-Org/Qwen-Image-Edit/resolve/main/split_files/diffusion_models/qwen_image_edit_2511_int8_convrot.safetensors|11b5af5ac601821d73930c84846c9a158e67177356daf927ce1c8d10f3963829

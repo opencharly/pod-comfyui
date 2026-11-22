@@ -72,81 +72,77 @@ After `charly start`:
 - `charly service status comfyui` — all services RUNNING
 - `curl -s -o /dev/null -w '%{http_code}' http://localhost:8188` — ComfyUI HTTP returns 200
 
-## VRAM: used while generating, released when idle
+## Dynamic VRAM (the 0.46.1 default)
 
-The launcher passes `--disable-smart-memory`, so the weights leave the card when a prompt
-finishes. It does **not** pass `--enable-dynamic-vram`, and that flag is **inert here**: ComfyUI's
-DynamicVRAM path is default-on on this pod, so the journal's `Model BaseModel prepared for dynamic
-VRAM loading. 1639MB Staged.` line appears on the same prompt **with and without** the flag
-(measured on the R10 bed, 2026-11-19: the red runs carried it, the green runs did not, and both
-staged). It is left out because it carries no behaviour on this pod and would be one more thing
-to keep true — never because removing it restores anything.
+ComfyUI 0.46.1 runs **Dynamic VRAM** (`comfy_aimdo`) by default on Nvidia with torch >= 2.8.
+It faults model weights in per layer and evicts under pressure, so a model larger than the
+card (Qwen-Image-Edit-2511 int8 is ~19 GiB on a 16 GiB RTX 4080 SUPER) runs without OOM.
+Do **not** pass `--lowvram`, `--novram`, `--highvram`, `--gpu-only` or
+`--disable-dynamic-vram`: each disables the allocator. `--disable-smart-memory` is the legacy
+aggressive-offload switch and is also forbidden: it forces a release after every prompt
+instead of letting the allocator keep what fits.
 
-What made `comfyui-vram-offload` fail twice was **its own sampling period**, not a streamed
-model. The load rides the card for about a prompt's duration: a 24 ms whole-device trace of a
-real prompt shows the card at or above 5000 MiB for 0.91 s and 1.23 s on two runs, peaking **1942
-and 1828 MiB above the pre-prompt reading** — the checkpoint IS resident. The old loop's period
-was ~1.3–1.5 s (`nvidia-smi` fork + `/history` round trip + `sleep 1`), so a 1.22 s prompt could
-fall entirely between two samples and produce exactly the `4–420 MiB` readings. The check now
-samples at **100 ms** (9–12 samples inside a fully-loaded window), keeps `LOADED_MIB` at 1024
-against that measured peak, and reports the sample count, the largest gap, the prompt duration
-and the margin over the threshold — so a green run carries its own evidence.
-Measured on an RTX 4080 SUPER (16,376 MiB), one
-generation being CheckpointLoaderSimple → KSampler 4 steps → VAEDecode → SaveImage:
+The launcher passes exactly one memory knob, `--vram-headroom "${COMFYUI_VRAM_HEADROOM}"`
+(default `1`): VRAM kept completely free, counting other apps. It is a shared-GPU policy, not
+a memory bound.
 
-| Reading | VRAM |
-|---|---|
-| idle, `/queue` empty, before any generation | 2,978 MiB |
-| idle after that generation completed | 3,100 MiB |
-| peak during a 1024×1024 20-step run | 5,980 MiB |
-| this candy's historical baseline, weights kept resident | 10,954 MiB |
-
-ComfyUI's own process barely moves (248 MiB idle → 370 MiB after a generation), which is the
-point: between prompts the model is not pinned in VRAM.
-
-The candy proves it on a live deployment: the `comfyui-vram-offload` runtime check runs one
-512×512 prompt and requires the card's used VRAM to rise by at least 1 GiB while it runs and to
-settle back within 768 MiB of the pre-prompt reading. It asserts that delta rather than an
-absolute footprint, because `nvidia-smi` reports the whole device and another container's models
-are in the same number; a launch without the flag keeps the weights and fails the check.
-
-`COMFYUI_VRAM_HEADROOM` (default `1`) is a different knob: the margin ComfyUI's DynamicVRAM
-keeps completely free, counting VRAM held by other apps. On a card with 9+ GiB spare it is met
-trivially, so it does not decide the idle footprint and must not be read as a memory bound.
-
-The flags themselves are asserted, not just described: the `comfyui-launch-flags` runtime check
-runs `/opt/comfyui/check-launch-flags.sh`, which isolates the `exec` line of the baked
-`start-comfyui.sh` (comments stripped, continuations joined) and fails naming any of
-`--disable-smart-memory`, `--vram-headroom` that is missing. A later
-edit that drops a flag from the launch line goes red there — otherwise the argument for carrying
-the flag would be a claim nothing in the image defends.
+Two checks defend the contract:
+- `comfyui-vram-offload` runs one small prompt and asserts the load DELTA (>= 1 GiB) and a
+  successful completion. It does NOT assert a post-prompt release; Dynamic VRAM deliberately
+  keeps what fits.
+- `comfyui-launch-flags` isolates the `exec` line and requires `--vram-headroom` while
+  forbidding every legacy mode flag. It fails on the pre-cutover launcher.
 
 ## When to Use This Skill
 
 **MUST be invoked** when the task involves the comfyui box, image generation, or ComfyUI workflows. Invoke this skill BEFORE reading source code or launching Explore agents.
 
-## Z-Image-Turbo (quantized), and LoRAs trained in pod-ai-toolkit
+## Model manifest, workflows and the shared model store
 
-The candy fetches a **model SET** on first boot, not just the single checkpoint, declared in
-`COMFYUI_MODEL_SET` as one `<subdir>/<filename>|<url>|<sha256>` line per file, where `<subdir>` is relative to
-`~/ComfyUI/models` (so `diffusion_models/x.safetensors`, NOT `models/diffusion_models/x.safetensors`). The
-default is the quantized Z-Image-Turbo trio, chosen because bf16 does not fit a 16 GB card
-alongside a LoRA stack:
+Every model is declared once in `models/model-manifest.tsv` (format
+`<subdir>/<filename>|<url>|<sha256>`), copied into the image at
+`/opt/comfyui/model-manifest.tsv` and read by `start-comfyui.sh` on every boot. The file is
+the single source: the launcher writes it to the state volume, the background fetcher verifies
+each sha256 before moving a file into place, and an existing file is skipped. The core set is
+~128 GiB (the Qwen-Image-2.1/Edit-2511, Z-Image-Turbo bf16/int8 and Wan 2.2 files plus the
+required companions `qwen3vl_8b`, the t2i PE and the Wan low-noise expert). The build-time
+`comfyui-model-manifest-complete` check fails when a shipped API workflow references a model
+with no manifest row.
 
-| File | Lands in | Size |
-|---|---|---|
-| `z_image_turbo_int8_convrot.safetensors` | `models/diffusion_models/` | 6.2 GB |
-| `qwen_3_4b_fp8_mixed.safetensors` | `models/text_encoders/` | 5.6 GB |
-| `ae.safetensors` | `models/vae/` | 0.34 GB |
+The shared XDG model store is a deploy overlay, not a candy field: a candy may not pin a host
+path. Bind `$XDG_DATA_HOME/charly/models/comfyui/models` at `/home/user/ComfyUI/models` and
+keep per-deploy state under `$XDG_DATA_HOME/charly/volumes/<deploy>/comfyui` (the merged
+distro-cachyos#219 pattern).
+
+API workflows shipped for Open WebUI (`workflows/*.api.json`):
+- `qwen-image-2.1-turbo-t2i.api.json` — Qwen-Image-2.1 Turbo int8, `ManualSigmas` 8-step
+  schedule, `qwen3vl_8b` text encoder (`CLIPLoader.type=qwen_image`); the PE prompt-enhancer
+  branch is pruned so the 8.8 GiB PE is not loaded for Open WebUI generation.
+- `qwen-image-edit-2511-lightning.api.json` — Edit-2511 int8 + Lightning 4-step LoRA,
+  `qwen_2.5_vl_7b_fp8_scaled`, `qwen_image` CLIP type, `LoadImage` + `FluxKontextImageScale`.
+- `z-image-turbo-int8.api.json` / `z-image-turbo-bf16.api.json` — the reliable fallback and
+  the quality variant. bf16 weights are ~18 GiB and stream; prefer int8 at 1024².
+- `wan2.2-5b-ti2v.api.json` — direct ComfyUI only (Open WebUI 0.13.4 has no video backend).
+
+The bundled templates are the direct-UI entry points; `#<uuid>` is not a route. Use
+`?template=<slug>&source=default`:
+
+```
+http://localhost:8188/?template=image_qwen_image_2_1_turbo_t2i&source=default
+http://localhost:8188/?template=image_qwen_image_edit_2511_int8&source=default
+http://localhost:8188/?template=image_z_image_turbo_int8&source=default
+http://localhost:8188/?template=video_wan2_2_5B_ti2v&source=default
+http://localhost:8188/?template=video_wan2_2_14B_t2v&source=default
+```
 
 Every file is sha256-checked before it is moved into place; a partial download lands in a
-`.part` and RESUMED on the next attempt (`--continue-at -`); it is renamed into place only
-after its sha256 verifies. `COMFYUI_MODEL_SET=` (empty) disables the set entirely — useful
-when you want the fast single-checkpoint boot and nothing else.
+`.part` and is RESUMED on the next attempt (`--continue-at -`).
 
-To generate: load the diffusion model, the Qwen3 text encoder and the `ae` VAE, then sample at
-**8 steps with cfg 0** — Turbo is a Decoupled-DMD distilled checkpoint (8 NFEs, guidance
-disabled), so a normal 20-step cfg 7 workflow produces noise.
+To generate with Z-Image-Turbo: load the diffusion model, the Qwen3 text encoder and the `ae`
+VAE, then sample at **8 steps with cfg 1** — Turbo is a Decoupled-DMD distilled checkpoint
+(8 NFEs); `res_multistep`/`simple` is the bundled schedule. A normal 20-step cfg 7 workflow
+produces noise. Qwen-Image-2.1 Turbo uses its `ManualSigmas` schedule and Edit-2511 uses the
+Lightning 4-step LoRA.
 
 ### The shared LoRA shelf
 
