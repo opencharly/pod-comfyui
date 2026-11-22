@@ -47,27 +47,11 @@ comfyui:
             COMFYUI_MODEL: v1-5-pruned-emaonly-fp16.safetensors
             COMFYUI_MODEL_URL: https://huggingface.co/Comfy-Org/stable-diffusion-v1-5-archive/resolve/main/v1-5-pruned-emaonly-fp16.safetensors
             COMFYUI_MODEL_SHA256: e9476a13728cd75d8279f6ec8bad753a66a1957ca375a1464dc63b37db6e3916
-            # A MODEL SET, fetched on first boot the same way the single checkpoint above is:
-            # one entry per line, `<subdir>/<filename>|<url>|<sha256>`. This is the
-            # quantized Z-Image-Turbo trio, sized to leave real headroom on a 16 GB card
-            # (bf16 is 12.3 GB for the DiT alone and leaves nothing for a LoRA stack):
-            #   diffusion_models 6.2 GB + text_encoders 5.6 GB + vae 0.34 GB ~= 12.2 GB.
-            # Verified at the boundary: every file is sha256-checked before it is moved into
-            # place. A partial download IS reused: `--continue-at -` resumes into the same .part, and the
-            # file is only renamed into place after its sha256 verifies.
-            # ONE LINE, with \n escapes, never a YAML block scalar: the value is substituted
-            # textually into the emitted Containerfile, where a real newline becomes its own
-            # Dockerfile line and the build dies with "unknown instruction: <modelpath>".
-            COMFYUI_MODEL_SET: 'vae/ae.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/vae/ae.safetensors|afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38\ntext_encoders/qwen_3_4b_fp8_mixed.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors|72450b19758172c5a7273cf7de729d1c17e7f434a104a00167624cba94f68f15\ndiffusion_models/z_image_turbo_int8_convrot.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/diffusion_models/z_image_turbo_int8_convrot.safetensors|be517ebd47c912a5626a588e1aeea43e6be4a43c0cdcd2b48a2a780d9f358635'
-            # The model-set wait bound. Declared HERE, not as a shell local: an assert-only
-            # check resolves only the runner's auto-exported variables, and a shell local makes
-            # the whole assertion DEAD.
-            #
-            # 600s is the BED budget, not a network budget: a full 12 GB set at ~10 Mbit/s
-            # would take hours, and any bound long enough to cover that is longer than the bed
-            # allows, so the check is killed before it can report. The set is therefore ordered
-            # smallest-first and 600s covers the 335 MB VAE comfortably; the bound exists to
-            # turn a hung fetch into a FAILURE, not to wait out the whole set.
+            # The canonical model list lives in models/model-manifest.tsv, copied into the image
+            # and read by start-comfyui.sh on every boot. It is the single source for every
+            # model file (the user's Qwen/Edit/Z-Image/Wan set plus companions); the fetcher
+            # verifies each sha256 before moving a file into place, and existing files are
+            # skipped. See the file header for the disk budget.
             COMFYUI_MODEL_SET_WAIT_SECS: "600"
         env_accept:
             - name: COMFYUI_MODEL_URL
@@ -76,8 +60,15 @@ comfyui:
               description: "sha256 of that checkpoint; the first-boot download is verified against it before the server starts."
             - name: COMFYUI_MODEL
               description: "File name the checkpoint is stored as, under models/checkpoints (default: v1-5-pruned-emaonly-fp16.safetensors)."
-            - name: COMFYUI_MODEL_SET
-              description: "Extra model files fetched on first boot: one `subdir/filename|url|sha256` per line (default: the quantized Z-Image-Turbo trio). Set to empty to fetch none."
+        env_provide:
+            COMFYUI_BASE_URL: "http://{{.ContainerName}}:8188"
+            IMAGES_EDIT_COMFYUI_BASE_URL: "http://{{.ContainerName}}:8188"
+            IMAGE_SIZE: "1024x1024"
+            IMAGE_STEPS: "8"
+            COMFYUI_WORKFLOW_B64: 'ewogICI0NTEiOiB7ImNsYXNzX3R5cGUiOiAiVU5FVExvYWRlciIsICJpbnB1dHMiOiB7InVuZXRfbmFtZSI6ICJxd2VuX2ltYWdlXzIuMV90dXJib19pbnQ4X2NvbnZyb3Quc2FmZXRlbnNvcnMiLCAid2VpZ2h0X2R0eXBlIjogImRlZmF1bHQifX0sCiAgIjQ1MyI6IHsiY2xhc3NfdHlwZSI6ICJDTElQTG9hZGVyIiwgImlucHV0cyI6IHsiY2xpcF9uYW1lIjogInF3ZW4zdmxfOGJfaW50OF9jb252cm90LnNhZmV0ZW5zb3JzIiwgInR5cGUiOiAicXdlbl9pbWFnZSIsICJkZXZpY2UiOiAiZGVmYXVsdCJ9fSwKICAiNDU0IjogeyJjbGFzc190eXBlIjogIlZBRUxvYWRlciIsICJpbnB1dHMiOiB7InZhZV9uYW1lIjogInF3ZW5faW1hZ2VfMi4xX3ZhZV9iZjE2LnNhZmV0ZW5zb3JzIn19LAogICI0NTIiOiB7ImNsYXNzX3R5cGUiOiAiVGV4dEVuY29kZVF3ZW5JbWFnZTIxIiwgImlucHV0cyI6IHsiY2xpcCI6IFsiNDUzIiwgMF0sICJwcm9tcHQiOiAiUFJPTVBUIiwgIm5lZ2F0aXZlX3Byb21wdCI6ICIiLCAicmVzb2x1dGlvbiI6IDEwMjR9fSwKICAiNDU2IjogeyJjbGFzc190eXBlIjogIkVtcHR5TGF0ZW50SW1hZ2UiLCAiaW5wdXRzIjogeyJ3aWR0aCI6IDEwMjQsICJoZWlnaHQiOiAxMDI0LCAiYmF0Y2hfc2l6ZSI6IDF9fSwKICAiNDg4IjogeyJjbGFzc190eXBlIjogIlJhbmRvbU5vaXNlIiwgImlucHV0cyI6IHsibm9pc2Vfc2VlZCI6IDB9fSwKICAiNDg3IjogeyJjbGFzc190eXBlIjogIktTYW1wbGVyU2VsZWN0IiwgImlucHV0cyI6IHsic2FtcGxlcl9uYW1lIjogImV1bGVyIn19LAogICI0ODQiOiB7ImNsYXNzX3R5cGUiOiAiTWFudWFsU2lnbWFzIiwgImlucHV0cyI6IHsic2lnbWFzIjogIjEuMCwgMC45Nzg0NTMsIDAuOTU0MTgsIDAuOTI2NjI2LCAwLjg5NTA4LCAwLjg0NTE0OCwgMC43MDQ1MzQsIDAuNDE0NTY4LCAwIn19LAogICI0OTAiOiB7ImNsYXNzX3R5cGUiOiAiUXdlbkltYWdlMjFDYWNoZSIsICJpbnB1dHMiOiB7Im1vZGVsIjogWyI0NTEiLCAwXSwgImRldmljZSI6ICJhdXRvIiwgImR0eXBlIjogImRlZmF1bHQifX0sCiAgIjQ4OSI6IHsiY2xhc3NfdHlwZSI6ICJDRkdHdWlkZXIiLCAiaW5wdXRzIjogeyJtb2RlbCI6IFsiNDkwIiwgMF0sICJwb3NpdGl2ZSI6IFsiNDUyIiwgMF0sICJuZWdhdGl2ZSI6IFsiNDUyIiwgMV0sICJjZmciOiAxLjB9fSwKICAiNDg2IjogeyJjbGFzc190eXBlIjogIlNhbXBsZXJDdXN0b21BZHZhbmNlZCIsICJpbnB1dHMiOiB7Im5vaXNlIjogWyI0ODgiLCAwXSwgImd1aWRlciI6IFsiNDg5IiwgMF0sICJzYW1wbGVyIjogWyI0ODciLCAwXSwgInNpZ21hcyI6IFsiNDg0IiwgMF0sICJsYXRlbnRfaW1hZ2UiOiBbIjQ1NiIsIDBdfX0sCiAgIjQ1NyI6IHsiY2xhc3NfdHlwZSI6ICJWQUVEZWNvZGUiLCAiaW5wdXRzIjogeyJzYW1wbGVzIjogWyI0ODYiLCAwXSwgInZhZSI6IFsiNDU0IiwgMF19fSwKICAiNDYxIjogeyJjbGFzc190eXBlIjogIlNhdmVJbWFnZUFkdmFuY2VkIiwgImlucHV0cyI6IHsiaW1hZ2VzIjogWyI0NTciLCAwXSwgImZpbGVuYW1lX3ByZWZpeCI6ICJRd2VuX2ltYWdlXzIuMSIsICJmb3JtYXQiOiAicG5nIiwgImJpdF9kZXB0aCI6ICI4LWJpdCIsICJpbnB1dF9jb2xvcl9zcGFjZSI6ICJzUkdCIn19Cn0K'
+            COMFYUI_WORKFLOW_NODES: '[{"type":"prompt","node_ids":["452"],"key":"prompt"},{"type":"width","node_ids":["456"],"key":"width"},{"type":"height","node_ids":["456"],"key":"height"},{"type":"n","node_ids":["456"],"key":"batch_size"},{"type":"seed","node_ids":["488"],"key":"noise_seed"}]'
+            IMAGES_EDIT_COMFYUI_WORKFLOW_B64: 'ewogICIxNjEiOiB7ImNsYXNzX3R5cGUiOiAiVU5FVExvYWRlciIsICJpbnB1dHMiOiB7InVuZXRfbmFtZSI6ICJxd2VuX2ltYWdlX2VkaXRfMjUxMV9pbnQ4X2NvbnZyb3Quc2FmZXRlbnNvcnMiLCAid2VpZ2h0X2R0eXBlIjogImRlZmF1bHQifX0sCiAgIjE2MiI6IHsiY2xhc3NfdHlwZSI6ICJDTElQTG9hZGVyIiwgImlucHV0cyI6IHsiY2xpcF9uYW1lIjogInF3ZW5fMi41X3ZsXzdiX2ZwOF9zY2FsZWQuc2FmZXRlbnNvcnMiLCAidHlwZSI6ICJxd2VuX2ltYWdlIiwgImRldmljZSI6ICJkZWZhdWx0In19LAogICIxNDYiOiB7ImNsYXNzX3R5cGUiOiAiVkFFTG9hZGVyIiwgImlucHV0cyI6IHsidmFlX25hbWUiOiAicXdlbl9pbWFnZV92YWUuc2FmZXRlbnNvcnMifX0sCiAgIjQxIjogeyJjbGFzc190eXBlIjogIkxvYWRJbWFnZSIsICJpbnB1dHMiOiB7ImltYWdlIjogInVwbG9hZC5wbmcifX0sCiAgIjE2MCI6IHsiY2xhc3NfdHlwZSI6ICJGbHV4S29udGV4dEltYWdlU2NhbGUiLCAiaW5wdXRzIjogeyJpbWFnZSI6IFsiNDEiLCAwXX19LAogICIxNTEiOiB7ImNsYXNzX3R5cGUiOiAiVGV4dEVuY29kZVF3ZW5JbWFnZUVkaXRQbHVzIiwgImlucHV0cyI6IHsiY2xpcCI6IFsiMTYyIiwgMF0sICJwcm9tcHQiOiAiUFJPTVBUIiwgInZhZSI6IFsiMTQ2IiwgMF0sICJpbWFnZTEiOiBbIjE2MCIsIDBdfX0sCiAgIjE0OSI6IHsiY2xhc3NfdHlwZSI6ICJUZXh0RW5jb2RlUXdlbkltYWdlRWRpdFBsdXMiLCAiaW5wdXRzIjogeyJjbGlwIjogWyIxNjIiLCAwXSwgInByb21wdCI6ICIiLCAidmFlIjogWyIxNDYiLCAwXSwgImltYWdlMSI6IFsiMTYwIiwgMF19fSwKICAiMTQ4IjogeyJjbGFzc190eXBlIjogIkZsdXhLb250ZXh0TXVsdGlSZWZlcmVuY2VMYXRlbnRNZXRob2QiLCAiaW5wdXRzIjogeyJjb25kaXRpb25pbmciOiBbIjE1MSIsIDBdLCAicmVmZXJlbmNlX2xhdGVudHNfbWV0aG9kIjogImluZGV4X3RpbWVzdGVwX3plcm8ifX0sCiAgIjE0NyI6IHsiY2xhc3NfdHlwZSI6ICJGbHV4S29udGV4dE11bHRpUmVmZXJlbmNlTGF0ZW50TWV0aG9kIiwgImlucHV0cyI6IHsiY29uZGl0aW9uaW5nIjogWyIxNDkiLCAwXSwgInJlZmVyZW5jZV9sYXRlbnRzX21ldGhvZCI6ICJpbmRleF90aW1lc3RlcF96ZXJvIn19LAogICIxNDUiOiB7ImNsYXNzX3R5cGUiOiAiTW9kZWxTYW1wbGluZ0F1cmFGbG93IiwgImlucHV0cyI6IHsibW9kZWwiOiBbIjE2MSIsIDBdLCAic2hpZnQiOiAzLjF9fSwKICAiMTUyIjogeyJjbGFzc190eXBlIjogIkNGR05vcm0iLCAiaW5wdXRzIjogeyJtb2RlbCI6IFsiMTQ1IiwgMF0sICJzdHJlbmd0aCI6IDEuMH19LAogICIxNTMiOiB7ImNsYXNzX3R5cGUiOiAiTG9yYUxvYWRlck1vZGVsT25seSIsICJpbnB1dHMiOiB7Im1vZGVsIjogWyIxNTIiLCAwXSwgImxvcmFfbmFtZSI6ICJRd2VuLUltYWdlLUVkaXQtMjUxMS1MaWdodG5pbmctNHN0ZXBzLVYxLjAtYmYxNi5zYWZldGVuc29ycyIsICJzdHJlbmd0aF9tb2RlbCI6IDEuMH19LAogICIxNTYiOiB7ImNsYXNzX3R5cGUiOiAiVkFFRW5jb2RlIiwgImlucHV0cyI6IHsicGl4ZWxzIjogWyIxNjAiLCAwXSwgInZhZSI6IFsiMTQ2IiwgMF19fSwKICAiMTY5IjogeyJjbGFzc190eXBlIjogIktTYW1wbGVyIiwgImlucHV0cyI6IHsibW9kZWwiOiBbIjE1MyIsIDBdLCAicG9zaXRpdmUiOiBbIjE0OCIsIDBdLCAibmVnYXRpdmUiOiBbIjE0NyIsIDBdLCAibGF0ZW50X2ltYWdlIjogWyIxNTYiLCAwXSwgInNlZWQiOiAwLCAic3RlcHMiOiA0LCAiY2ZnIjogMS4wLCAic2FtcGxlcl9uYW1lIjogImV1bGVyIiwgInNjaGVkdWxlciI6ICJzaW1wbGUiLCAiZGVub2lzZSI6IDEuMH19LAogICIxNTgiOiB7ImNsYXNzX3R5cGUiOiAiVkFFRGVjb2RlIiwgImlucHV0cyI6IHsic2FtcGxlcyI6IFsiMTY5IiwgMF0sICJ2YWUiOiBbIjE0NiIsIDBdfX0sCiAgIjE5NSI6IHsiY2xhc3NfdHlwZSI6ICJTYXZlSW1hZ2VBZHZhbmNlZCIsICJpbnB1dHMiOiB7ImltYWdlcyI6IFsiMTU4IiwgMF0sICJmaWxlbmFtZV9wcmVmaXgiOiAiUXdlbl9FZGl0XzI1MTEiLCAiZm9ybWF0IjogInBuZyIsICJiaXRfZGVwdGgiOiAiOC1iaXQiLCAiaW5wdXRfY29sb3Jfc3BhY2UiOiAic1JHQiJ9fQp9Cg=='
+            IMAGES_EDIT_COMFYUI_WORKFLOW_NODES: '[{"type":"image","node_ids":["41"],"key":"image"},{"type":"prompt","node_ids":["151"],"key":"prompt"},{"type":"seed","node_ids":["169"],"key":"seed"}]'
         distro:
             arch:
                 package:
@@ -108,6 +99,51 @@ comfyui:
                 cd /opt/comfyui
                 git describe --tags --always > .charly-ref
                 cat .charly-ref
+              run_as: root
+            - run: install the canonical model manifest
+              copy: models/model-manifest.tsv
+              to: /opt/comfyui/model-manifest.tsv
+              mode: "0644"
+              run_as: root
+            - run: install the candy manifest so the workflow-provides gate can read its env_provide values
+              copy: charly.yml
+              to: /opt/comfyui/charly.yml
+              mode: "0644"
+              run_as: root
+            - run: install the Qwen-Image-2.1 Turbo T2I API workflow
+              copy: workflows/qwen-image-2.1-turbo-t2i.api.json
+              to: /opt/comfyui/workflows/qwen-image-2.1-turbo-t2i.api.json
+              mode: "0644"
+              run_as: root
+            - run: install the Qwen-Image-Edit-2511 Lightning API workflow
+              copy: workflows/qwen-image-edit-2511-lightning.api.json
+              to: /opt/comfyui/workflows/qwen-image-edit-2511-lightning.api.json
+              mode: "0644"
+              run_as: root
+            - run: install the Z-Image-Turbo int8 fallback API workflow
+              copy: workflows/z-image-turbo-int8.api.json
+              to: /opt/comfyui/workflows/z-image-turbo-int8.api.json
+              mode: "0644"
+              run_as: root
+            - run: install the Z-Image-Turbo bf16 fallback API workflow
+              copy: workflows/z-image-turbo-bf16.api.json
+              to: /opt/comfyui/workflows/z-image-turbo-bf16.api.json
+              mode: "0644"
+              run_as: root
+            - run: install the Wan 2.2 5B TI2V API workflow
+              copy: workflows/wan2.2-5b-ti2v.api.json
+              to: /opt/comfyui/workflows/wan2.2-5b-ti2v.api.json
+              mode: "0644"
+              run_as: root
+            - run: install the manifest/workflow completeness gate
+              copy: scripts/check-model-manifest.sh
+              to: /opt/comfyui/check-model-manifest.sh
+              mode: "0755"
+              run_as: root
+            - run: install the workflow-provides drift gate
+              copy: scripts/check-workflow-provides.sh
+              to: /opt/comfyui/check-workflow-provides.sh
+              mode: "0755"
               run_as: root
             - run: write the ONE model-fetch helper both the launcher and the fetch script source
               write: /opt/comfyui/fetch-lib.sh
@@ -182,7 +218,7 @@ comfyui:
                 set -eu
                 # Verifies the model-set FETCH MECHANISM, on a timescale a bed can observe.
                 #
-                # It deliberately does NOT wait for a 12 GB download: the earlier version did, and the bed
+                # It deliberately does NOT wait for the full ~128 GiB download: the earlier version did, and the bed
                 # killed the check before it could report ("execution error: process terminated by signal"),
                 # so it proved nothing AND said nothing. What IS provable quickly: the declaration reached the
                 # container, the launcher wrote the manifest, the fetch ran, at least one declared file landed
@@ -238,25 +274,23 @@ comfyui:
               content: |
                 #!/bin/bash
                 set -eu
-                # The ONE runtime assertion of this candy's memory claim, and the check that FAILS on a
-                # launch WITHOUT `--disable-smart-memory`: ComfyUI then keeps the weights resident
-                # between prompts, so the reading after a prompt stays ~2 GB ABOVE the pre-prompt one
-                # instead of returning to it.
+                # The runtime assertion of the Dynamic VRAM configuration: a prompt puts weights on
+                # the card and completes without OOM. Dynamic VRAM (comfy_aimdo) is on by default
+                # for torch >= 2.8 on Nvidia; it faults weights in per layer and evicts under
+                # pressure, so a post-prompt "settled" reading is NOT a contract. The pre-Dynamic
+                # check asserted exactly the release that the legacy --disable-smart-memory flag
+                # forced; check-launch-flags.sh now forbids that flag.
                 #
-                # It asserts a DELTA, never an absolute footprint, because nvidia-smi reports the
-                # WHOLE device: another container's models are in the same number. The delta is the
-                # part this deployment caused, so the check means the same thing on a shared card.
+                # It records the device peak, never a per-run load delta: Dynamic VRAM keeps a
+                # model resident between prompts, so a second run legitimately shows little or no
+                # rise. The launch CONTRACT (no legacy flag) is asserted by comfyui-launch-flags.
                 #
                 # A SCRIPT, not an inline assert-only step: every shell variable in such a step --
                 # even one the step assigns itself -- makes the assertion DEAD (measured on a bed run).
                 BASE="${HOME}/ComfyUI"
                 PORT="${HOST_PORT:-8188}"
                 API="http://127.0.0.1:${PORT}"
-                # MiB. The checkpoint is 2034 MiB: a 1024 MiB rise proves the prompt really loaded it,
-                # and a 768 MiB settle tolerance absorbs allocator/context drift without ever
-                # admitting a retained 2 GB model.
-                LOADED_MIB=1024
-                RETAINED_MIB=768
+                # No LOADED_MIB threshold: see the header. The runtime claim is completion.
 
                 vram_used_mib() {
                   if command -v nvidia-smi >/dev/null 2>&1; then
@@ -391,40 +425,17 @@ comfyui:
                 done
                 prompt_ms=$(( ($(date +%s%N) - started_ns) / 1000000 ))
 
-                # 4. The weights must be back OFF the card. Unloading is not synchronous with the HTTP
-                #    reply, so settle: the best reading inside 60s is the one that counts.
-                settled="${peak}"
-                waited=0
-                while :; do
-                  used=$(vram_used_mib)
-                  [ "${used}" -lt "${settled}" ] && settled="${used}"
-                  [ $((settled - before)) -le "${RETAINED_MIB}" ] && break
-                  [ "${waited}" -ge 60 ] && break
-                  sleep 2
-                  waited=$((waited + 2))
-                done
-                echo "VRAM before=${before} MiB peak=${peak} MiB settled=${settled} MiB"
+                # 4. Record the measurement. Dynamic VRAM deliberately keeps what fits and evicts
+                # under pressure; a post-prompt "settled" reading is not a contract. The load is
+                # the measured claim; the no-OOM boundary is the device total.
+                echo "VRAM before=${before} MiB peak=${peak} MiB"
                 echo "prompt ${prompt_ms} ms; ${samples} samples at a ${SAMPLE_PERIOD_MS} ms period, largest gap ${max_gap_ms} ms"
-                # RECORD the measurement, not only the verdict. The check runner keeps a step's
-                # stdout only when the step FAILS -- a measured PASS carries `exit=0` and nothing
-                # else -- so without this line the observed peak and margin have no home on a green
-                # run, which is exactly the evidence this check exists to produce. Written to the
-                # state volume so it survives the run, and it records failures too.
-                printf '%s prompt_ms=%s samples=%s max_gap_ms=%s period_ms=%s before_mib=%s peak_mib=%s settled_mib=%s rise_mib=%s retained_mib=%s\n' \
+                printf '%s prompt_ms=%s samples=%s max_gap_ms=%s period_ms=%s before_mib=%s peak_mib=%s rise_mib=%s\n' \
                   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${prompt_ms}" "${samples}" "${max_gap_ms}" \
-                  "${SAMPLE_PERIOD_MS}" "${before}" "${peak}" "${settled}" \
-                  "$((peak - before))" "$((settled - before))" \
+                  "${SAMPLE_PERIOD_MS}" "${before}" "${peak}" "$((peak - before))" \
                   >> "${BASE}/charly-vram-offload.log" 2>/dev/null || true
 
-                if [ $((peak - before)) -lt "${LOADED_MIB}" ]; then
-                  echo "the prompt did not put the checkpoint on the card (peak rose $((peak - before)) MiB, expected >= ${LOADED_MIB}): ${samples} samples ${max_gap_ms} ms apart over a ${prompt_ms} ms prompt, so the load was not missed between samples; the check would prove nothing" >&2
-                  exit 1
-                fi
-                if [ $((settled - before)) -gt "${RETAINED_MIB}" ]; then
-                  echo "the model is still pinned in VRAM after the prompt: settled ${settled} MiB is $((settled - before)) MiB above the pre-prompt ${before} MiB (tolerance ${RETAINED_MIB})" >&2
-                  exit 1
-                fi
-                echo "the checkpoint was loaded and released: peak rose $((peak - before)) MiB against the ${LOADED_MIB} MiB threshold (margin $((peak - before - LOADED_MIB)) MiB) and settled within $((settled - before)) MiB of the pre-prompt reading (tolerance ${RETAINED_MIB} MiB)"
+                echo "the prompt completed under Dynamic VRAM: peak=${peak} MiB, before=${before} MiB, ${samples} samples over ${prompt_ms} ms"
             - run: write the runtime check that the emitted launch line still carries every flag the recipe promises
               write: /opt/comfyui/check-launch-flags.sh
               mode: "0755"
@@ -441,8 +452,8 @@ comfyui:
                 #
                 # It isolates the LAUNCH COMMAND, never the whole file: the rationale comment block
                 # above the launch NAMES the flags in prose, so a whole-file grep passes on a
-                # launcher that has already lost one (measured: `grep -q -- --disable-smart-memory`
-                # exits 0 on a launch line that no longer passes it). Comments are stripped and the
+                # launcher that has already lost one (measured: a whole-file grep for a flag exits 0
+                # on a launch line that no longer passes it). Comments are stripped and the
                 # backslash continuations joined, so the assertion sees the one command supervisord runs.
                 LAUNCHER=/opt/comfyui/start-comfyui.sh
                 if [ ! -s "${LAUNCHER}" ]; then
@@ -462,10 +473,10 @@ comfyui:
                   echo "no 'exec python ... main.py' launch line in ${LAUNCHER}" >&2
                   exit 1
                 fi
-                # The promise: the flags the recipe argues for, one per line of the decision above
-                # the launch. Add a flag here when the launcher gains one -- this list IS the contract.
+                # Dynamic VRAM is ON by default for torch >= 2.8 on Nvidia. The launch must carry
+                # --vram-headroom and must NOT carry a mode flag that disables the allocator.
                 missing=
-                for flag in --disable-smart-memory --vram-headroom; do
+                for flag in --vram-headroom; do
                   case " ${launch} " in
                     *" ${flag} "*) ;;
                     *) missing="${missing}${missing:+ }${flag}" ;;
@@ -476,7 +487,18 @@ comfyui:
                   echo "launch line: ${launch}" >&2
                   exit 1
                 fi
-                echo "launch line carries every promised flag: --disable-smart-memory --vram-headroom"
+                forbidden=
+                for flag in --disable-smart-memory --lowvram --novram --highvram --gpu-only --disable-dynamic-vram; do
+                  case " ${launch} " in
+                    *" ${flag} "*) forbidden="${forbidden}${forbidden:+ }${flag}" ;;
+                  esac
+                done
+                if [ -n "${forbidden}" ]; then
+                  echo "the launch line in ${LAUNCHER} carries a flag that disables Dynamic VRAM: ${forbidden}" >&2
+                  echo "launch line: ${launch}" >&2
+                  exit 1
+                fi
+                echo "launch line carries --vram-headroom and no legacy VRAM-mode flag"
             - run: write the start script that seeds the state tree, ensures the model, then execs the server
               write: /opt/comfyui/start-comfyui.sh
               mode: "0755"
@@ -503,7 +525,7 @@ comfyui:
                 fetch_verified "${CKPT}" \
                   "${COMFYUI_MODEL_URL:?COMFYUI_MODEL_URL must be declared by the candy or set per deploy}" \
                   "${COMFYUI_MODEL_SHA256:?COMFYUI_MODEL_SHA256 must be declared by the candy or set per deploy}"
-                # The MODEL SET runs in the BACKGROUND, deliberately: it is ~12 GB, and doing it
+                # The MODEL SET runs in the BACKGROUND, deliberately: the full set is ~128 GiB, and doing it
                 # before the server starts would push every cold boot past the window this bed and
                 # its callers allow for a first response. ComfyUI only needs these files when a
                 # workflow references them, so the server comes up first and the weights land
@@ -512,9 +534,16 @@ comfyui:
                 # The DECLARED set and its wait bound are written to files at launch, so the
                 # assert-only check can read them WITHOUT a braced reference to a candy env
                 # var: an unresolvable ${VAR} makes the step SKIP, and a skip reads green.
-                printf '%b\n' "${COMFYUI_MODEL_SET:-}" > "${BASE}/model-set.manifest"
-                printf '%s\n' "${COMFYUI_MODEL_SET_WAIT_SECS:-7200}" > "${BASE}/model-set.bound"
-                if [ -n "${COMFYUI_MODEL_SET:-}" ]; then
+                # The manifest is copied into the image by the candy; strip comments/blank lines
+                # into the state volume so the fetch and check scripts read one canonical list.
+                MANIFEST=/opt/comfyui/model-manifest.tsv
+                if [ ! -s "${MANIFEST}" ]; then
+                  echo "no model manifest at ${MANIFEST}" >&2
+                  exit 1
+                fi
+                grep -vE '^[[:space:]]*(#|$)' "${MANIFEST}" > "${BASE}/model-set.manifest"
+                printf '%s\n' "${COMFYUI_MODEL_SET_WAIT_SECS:-600}" > "${BASE}/model-set.bound"
+                if [ -s "${BASE}/model-set.manifest" ]; then
                   # setsid: its own session. `&` alone left this in the start script's process
                   # group and it was killed when the script exec'd the server, so the download
                   # never finished and model-set.done never appeared.
@@ -523,43 +552,15 @@ comfyui:
                 else
                   touch "${BASE}/model-set.done"
                 fi
-                # The memory flags, each verified against ComfyUI v0.45.3's own source (the tag
-                # this candy pins):
-                # --disable-smart-memory: use the card while a prompt runs, give it back when the
-                # prompt ends. execution.py runs, on the SUCCESS path of every prompt,
-                # `if comfy.model_management.DISABLE_SMART_MEMORY: unload_all_models()`, and
-                # model_management.py's `free_memory()` sets `memory_to_free = 1e32` under that flag
-                # instead of `memory_required - get_free_memory(device)`, so every model outside
-                # `keep_loaded` is offloaded to CPU rather than kept. Measured on a 16 GB card:
-                # 2,978 MiB VRAM idle before a generation, 3,100 MiB idle after one (peak 5,980 MiB),
-                # against 10,954 MiB for a server that keeps the weights resident between prompts.
-                # --vram-headroom: how much VRAM ComfyUI keeps COMPLETELY free and unused, counting
-                # VRAM held by other apps. From v0.45.3's own comfy/cli_args.py: "Set the amount of vram
-                # in GB for DynamicVRAM to maintain as extra headroom above default. ComfyUI will try
-                # and keep this much VRAM completely free and unused, even counting VRAM from other
-                # apps." It is a POLICY knob for a shared GPU, not a memory-saving claim: an operator
-                # who runs other work beside ComfyUI sets it so a generation cannot eat the last
-                # gigabyte. Declared as COMFYUI_VRAM_HEADROOM, default 1, overridable per deploy
-                # (`charly config comfyui -e COMFYUI_VRAM_HEADROOM=4`).
-                #
-                # `--enable-dynamic-vram` is deliberately NOT passed, and it is NOT the guard's fix.
-                # It is INERT on this pod: ComfyUI's DynamicVRAM path is default-on here, and the
-                # journal line "Model BaseModel prepared for dynamic VRAM loading. 1639MB Staged."
-                # appears on the same prompt WITH and WITHOUT the flag (measured on the R10 bed,
-                # 2026-11-19: the red runs carried the flag, the green runs did not, and both
-                # staged). It was added to satisfy a spec that listed three flags, and its own
-                # rationale already said it "changes no allocation policy on this pod today"; a flag
-                # that changes nothing, kept true only by a guard, is weight rather than capability.
-                #
-                # What DID break `comfyui-vram-offload` was that guard's own sampling period. The
-                # load rides the card for about the prompt's duration -- a 24 ms whole-device trace
-                # shows the card at or above 5000 MiB for 0.91 s and 1.23 s on two runs, peaking
-                # +1942 and +1828 MiB over the pre-prompt reading -- and a ~1.3-1.5 s loop could
-                # miss a 1.22 s prompt entirely. The fix is the 100 ms sampler in
-                # check-vram-offload.sh above.
+                # Memory policy: Dynamic VRAM is ON by default (torch >= 2.8, Nvidia) and is the
+                # mechanism that makes models larger than VRAM runnable. It faults weights in per
+                # layer and evicts under pressure. Do NOT pass --lowvram/--novram/--highvram/
+                # --gpu-only/--disable-dynamic-vram (each disables it) and do NOT pass
+                # --disable-smart-memory, the legacy aggressive-offload switch. --vram-headroom is
+                # the one policy knob: VRAM kept completely free, counting other apps (declared as
+                # COMFYUI_VRAM_HEADROOM, default 1, overridable per deploy).
                 exec python /opt/comfyui/main.py --listen 0.0.0.0 --port 8188 \
                   --enable-manager --base-directory "${BASE}" \
-                  --disable-smart-memory \
                   --vram-headroom "${COMFYUI_VRAM_HEADROOM}"
             - check: the image records the ComfyUI release tag it was built from
               id: comfyui-pinned-ref
@@ -662,16 +663,29 @@ comfyui:
               command: /opt/comfyui/check-model-set.sh
               exit_status: 0
 
-            - check: a completed prompt releases the model from VRAM — the same run raises the card's
-                usage and then settles back, so a launch that keeps the weights resident fails here
+            - check: every model a shipped API workflow references has a canonical manifest row
+              id: comfyui-model-manifest-complete
+              context:
+                - build
+              command: /opt/comfyui/check-model-manifest.sh
+              exit_status: 0
+
+            - check: the env_provide base64 workflow copies equal the committed API workflow files
+              id: comfyui-workflow-provides-match
+              context:
+                - build
+              command: /opt/comfyui/check-workflow-provides.sh
+              exit_status: 0
+
+            - check: a prompt completes without OOM under Dynamic VRAM
               id: comfyui-vram-offload
               context:
                 - runtime
-              # The runtime check that FAILS without `--disable-smart-memory`. It runs one small
-              # generation and asserts the DELTA (up by >= 1 GiB while the prompt runs, back within
-              # 768 MiB afterwards), which is attributable to this deployment even when another
-              # container shares the card. Logic lives in the baked script: an assert-only step
-              # cannot carry shell variables at all.
+              # Dynamic VRAM (comfy_aimdo) faults weights in per layer and evicts under pressure;
+              # it also KEEPS a model resident, so a per-run load delta is not a contract. This
+              # check runs one small generation, asserts a successful completion, and records the
+              # device peak. The launch-flag contract (no legacy mode flags) is asserted by
+              # comfyui-launch-flags.
               command: /opt/comfyui/check-vram-offload.sh
               exit_status: 0
 
