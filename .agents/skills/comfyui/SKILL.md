@@ -99,11 +99,13 @@ Two checks defend the contract:
 
 ## Model manifest, workflows and the shared model store
 
-Every model is declared once in `models/model-manifest.tsv` (format
+Every model-SET file is declared once in `models/model-manifest.tsv` (format
 `<subdir>/<filename>|<url>|<sha256>`), copied into the image at
-`/opt/comfyui/model-manifest.tsv` and read by `start-comfyui.sh` on every boot. The file is
-the single source: the launcher writes it to the state volume, the background fetcher verifies
-each sha256 before moving a file into place, and an existing file is skipped. The core set is
+`/opt/comfyui/model-manifest.tsv` and read by `start-comfyui.sh` on every boot. The default
+checkpoint is the one exception: `COMFYUI_MODEL_URL` / `COMFYUI_MODEL_SHA256` remain its single
+source and it is fetched synchronously before the server starts, so it is NOT duplicated here.
+For the set, the launcher writes the manifest to the state volume, the background fetcher
+verifies each sha256 before moving a file into place, and an existing file is skipped. The core set is
 ~128 GiB (the Qwen-Image-2.1/Edit-2511, Z-Image-Turbo bf16/int8 and Wan 2.2 files plus the
 required companions `qwen3vl_8b`, the t2i PE and the Wan low-noise expert). The build-time
 `comfyui-model-manifest-complete` check fails when a shipped API workflow references a model

@@ -21,8 +21,10 @@
 #   vae + LoRA files                             <1.5 each
 # Core total for all rows below is ~127.94 GiB.
 #
-# Existing files are listed too: fetch_verified() returns immediately when the
-# destination already exists, so this file is the single source for every model.
+# Existing model-set files are listed too (fetch_verified skips a present file).
+# The DEFAULT CHECKPOINT is intentionally NOT here: COMFYUI_MODEL_URL /
+# COMFYUI_MODEL_SHA256 remain its single source, fetched synchronously before
+# the server starts. This file is the single source for the model SET.
 
 loras/pytorch_lora_weights.safetensors|https://huggingface.co/lightx2v/Qwen-Image-2.1-Lightning/resolve/main/pytorch_lora_weights.safetensors|53c69320d4163da51032f90275074028cb098556039c72b45f8dce9f0f9e34a3
 vae/qwen_image_vae.safetensors|https://huggingface.co/Comfy-Org/Qwen-Image/resolve/main/split_files/vae/qwen_image_vae.safetensors|a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f
@@ -34,7 +36,6 @@ loras/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors|https://huggin
 loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors|https://huggingface.co/Comfy-Org/Wan-2.2/resolve/main/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors|698321cb86bd30c4af06c9b84e656a1048c8cb54e06d50694536fb5de37fde41
 loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors|https://huggingface.co/Comfy-Org/Wan-2.2/resolve/main/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors|ec95216e614b3c132c11bfb387b11feedf62163150ccc9068bca8a189771e75a
 vae/wan2.2_vae.safetensors|https://huggingface.co/Comfy-Org/Wan-2.2/resolve/main/split_files/vae/wan2.2_vae.safetensors|e40321bd36b9709991dae2530eb4ac303dd168276980d3e9bc4b6e2b75fed156
-checkpoints/v1-5-pruned-emaonly-fp16.safetensors|https://huggingface.co/Comfy-Org/stable-diffusion-v1-5-archive/resolve/main/v1-5-pruned-emaonly-fp16.safetensors|e9476a13728cd75d8279f6ec8bad753a66a1957ca375a1464dc63b37db6e3916
 text_encoders/qwen_3_4b_fp8_mixed.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors|72450b19758172c5a7273cf7de729d1c17e7f434a104a00167624cba94f68f15
 diffusion_models/z_image_turbo_int8_convrot.safetensors|https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/diffusion_models/z_image_turbo_int8_convrot.safetensors|be517ebd47c912a5626a588e1aeea43e6be4a43c0cdcd2b48a2a780d9f358635
 text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors|https://huggingface.co/Comfy-Org/Wan-2.1/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors|c3355d30191f1f066b26d93fba017ae9809dce6c627dda5f6a66eaa651204f68
