@@ -11,5 +11,5 @@
   "489": {"class_type": "CFGGuider", "inputs": {"model": ["490", 0], "positive": ["452", 0], "negative": ["452", 1], "cfg": 1.0}},
   "486": {"class_type": "SamplerCustomAdvanced", "inputs": {"noise": ["488", 0], "guider": ["489", 0], "sampler": ["487", 0], "sigmas": ["484", 0], "latent_image": ["456", 0]}},
   "457": {"class_type": "VAEDecode", "inputs": {"samples": ["486", 0], "vae": ["454", 0]}},
-  "461": {"class_type": "SaveImageAdvanced", "inputs": {"images": ["457", 0], "filename_prefix": "Qwen_image_2.1", "format": "png", "bit_depth": "8-bit", "input_color_space": "sRGB"}}
+  "461": {"class_type": "SaveImage", "inputs": {"images": ["457", 0], "filename_prefix": "Qwen_image_2.1"}}
 }

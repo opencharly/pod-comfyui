@@ -8,5 +8,5 @@
   "11": {"class_type": "ModelSamplingAuraFlow", "inputs": {"model": ["28", 0], "shift": 3.0}},
   "3": {"class_type": "KSampler", "inputs": {"model": ["11", 0], "positive": ["27", 0], "negative": ["33", 0], "latent_image": ["13", 0], "seed": 0, "steps": 8, "cfg": 1.0, "sampler_name": "res_multistep", "scheduler": "simple", "denoise": 1.0}},
   "8": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["29", 0]}},
-  "9": {"class_type": "SaveImageAdvanced", "inputs": {"images": ["8", 0], "filename_prefix": "z-image-turbo", "format": "png", "bit_depth": "8-bit", "input_color_space": "sRGB"}}
+  "9": {"class_type": "SaveImage", "inputs": {"images": ["8", 0], "filename_prefix": "z-image-turbo"}}
 }
