@@ -665,6 +665,8 @@ comfyui:
 
             - check: every model a shipped API workflow references has a canonical manifest row
               id: comfyui-model-manifest-complete
+              context:
+                - build
               command: /opt/comfyui/check-model-manifest.sh
               exit_status: 0
 
