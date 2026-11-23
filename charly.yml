@@ -135,6 +135,25 @@ comfyui:
               to: /opt/comfyui/workflows/wan2.2-5b-ti2v.api.json
               mode: "0644"
               run_as: root
+            - run: copy the curated template set — UI graphs, their generated API twins and the provenance files
+              copy: templates
+              to: /opt/comfyui/templates
+              run_as: root
+            - run: copy the template gate
+              copy: scripts/check-templates.sh
+              to: /opt/comfyui/check-templates.sh
+              mode: "0755"
+              run_as: root
+            - run: copy the ONE converter that regenerates the API twins from the UI graphs
+              copy: scripts/ui-to-api.py
+              to: /opt/comfyui/ui-to-api.py
+              mode: "0755"
+              run_as: root
+            - run: copy the template-set version stamper
+              copy: scripts/templates-version.sh
+              to: /opt/comfyui/templates-version.sh
+              mode: "0755"
+              run_as: root
             - run: install the manifest/workflow completeness gate
               copy: scripts/check-model-manifest.sh
               to: /opt/comfyui/check-model-manifest.sh
@@ -499,6 +518,27 @@ comfyui:
                   exit 1
                 fi
                 echo "launch line carries --vram-headroom and no legacy VRAM-mode flag"
+            - run: write the check that the curated templates are served by the frontend's template API
+              write: /opt/comfyui/check-templates-served.sh
+              mode: "0755"
+              run_as: root
+              content: |
+                #!/bin/bash
+                set -eu
+                # The pod installs the curated set as the `charly_templates` custom-node module in the
+                # state volume; the server lists it at /api/workflow_templates and serves each graph at
+                # /api/workflow_templates/charly_templates/<name>.json (the frontend then deep-links
+                # /?template=<name>&source=charly_templates). Both are asserted here, so a module that
+                # failed to install cannot pass as "the files are in the image".
+                U=http://127.0.0.1:8188
+                LIST=$(curl -fsS --max-time 20 "${U}/api/workflow_templates")
+                COUNT=$(printf '%s' "${LIST}" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(len(d.get("charly_templates") or []))')
+                if [ "${COUNT}" != "12" ]; then
+                  echo "expected 12 charly_templates, got ${COUNT}: ${LIST}" >&2
+                  exit 1
+                fi
+                curl -fsS --max-time 20 "${U}/api/workflow_templates/charly_templates/qwen-image-2.1-turbo-t2i.json" > /dev/null
+                echo "charly_templates: ${COUNT} templates listed, one fetched"
             - run: write the start script that seeds the state tree, ensures the model, then execs the server
               write: /opt/comfyui/start-comfyui.sh
               mode: "0755"
@@ -516,6 +556,26 @@ comfyui:
                 mkdir -p "${BASE}"/models/{checkpoints,clip,clip_vision,configs,controlnet}
                 mkdir -p "${BASE}"/models/{diffusers,diffusion_models,embeddings,gligen,hypernetworks,loras}
                 mkdir -p "${BASE}"/models/{photomaker,style_models,text_encoders,unet,upscale_models,vae,vae_approx}
+                # CURATED TEMPLATE SET: a pod-owned custom-node module in the STATE volume. It is the
+                # only surface that lists templates in the frontend's Templates dialog without patching
+                # upstream: /api/workflow_templates/<module> -> /?template=<slug>&source=charly_templates.
+                # Refreshed in place when the shipped VERSION differs from the installed marker; the
+                # directory is the POD's own, so a refresh never touches a user's workflows.
+                TEMPLATES=/opt/comfyui/templates
+                TVER=$(cat "${TEMPLATES}/VERSION" 2>/dev/null || echo none)
+                TMOD="${BASE}/custom_nodes/charly_templates"
+                if [ "$(cat "${TMOD}/.version" 2>/dev/null || true)" != "${TVER}" ]; then
+                  rm -rf "${TMOD}"
+                  mkdir -p "${TMOD}/example_workflows"
+                  cp "${TEMPLATES}"/ui/*.json "${TMOD}/example_workflows/"
+                  cp "${TEMPLATES}/README.md" "${TMOD}/README.md" 2>/dev/null || true
+                  printf 'NODE_CLASS_MAPPINGS = {}\nNODE_DISPLAY_NAME_MAPPINGS = {}\n' > "${TMOD}/__init__.py"
+                  printf '%s\n' "${TVER}" > "${TMOD}/.version"
+                  echo "template module charly_templates refreshed to ${TVER}"
+                fi
+                # SAM 3D Body's loaders read these two folders (folder_paths: "detection",
+                # "geometry_estimation"); ComfyUI will not create them, and the fetcher needs them.
+                mkdir -p "${BASE}"/models/{detection,geometry_estimation}
                 # ONE fetch path for every model file, whatever declares it. Resume into a
                 # .part, verify the sha256, then rename into place — extracted because the
                 # single checkpoint and the model set were two copies of this same sequence
@@ -675,6 +735,21 @@ comfyui:
               context:
                 - build
               command: /opt/comfyui/check-workflow-provides.sh
+              exit_status: 0
+
+            - check: the curated template set regenerates to a no-op, every model it names is in the
+                manifest, and every manifest model is showcased (or explicitly allowlisted)
+              id: comfyui-templates-complete
+              context:
+                - build
+              command: /opt/comfyui/check-templates.sh --ui-dir /opt/comfyui/templates/ui --api-dir /opt/comfyui/templates/api --manifest /opt/comfyui/templates/manifest.tsv --allowlist /opt/comfyui/templates/allowlist.tsv --model-manifest /opt/comfyui/model-manifest.tsv --version-file /opt/comfyui/templates/VERSION --object-info /opt/comfyui/templates/object_info.json --src-dir /home/user/.pixi/envs/default/lib/python3.13/site-packages/comfyui_workflow_templates_json/templates
+              exit_status: 0
+
+            - check: the curated templates are served by the frontend's template API and fetch as JSON
+              id: comfyui-templates-listed
+              context:
+                - runtime
+              command: /opt/comfyui/check-templates-served.sh
               exit_status: 0
 
             - check: a prompt completes without OOM under Dynamic VRAM

@@ -1,0 +1,2 @@
+model_file	reason	decision
+loras/pytorch_lora_weights.safetensors	no valid graph with this pod's models: the base Qwen-Image-2.1 diffusion model it accelerates is not in the manifest, and the turbo model already carries that distillation, so applying it has no defined recipe	allowlisted — revisit if the base Qwen-Image-2.1 model is added to the set
