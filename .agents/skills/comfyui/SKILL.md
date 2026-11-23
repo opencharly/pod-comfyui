@@ -186,8 +186,7 @@ patching upstream, and it never touches a user's own workflows.
 | `qwen-image-edit-2511-lightning` | single-image edit, 4-step Lightning LoRA | edit_2511 int8, qwen_2.5_vl, qwen_image_vae |
 | `qwen-image-edit-2511-multi-angle` | **two LoRAs stacked** (Lightning + multi-angles) with `CameraAngle` | same + both LoRAs |
 | `z-image-turbo-int8` / `z-image-turbo-bf16` | T2I, 8-step cfg 1 | z_image int8/bf16, qwen_3_4b, `ae` |
-| `z-image-turbo-lora` | **Z-Image + the distill-patch LoRA** (`LoraLoaderModelOnly`, strength widget) | + `z_image_turbo_distill_patch_lora_bf16` |
-| `lora-shelf-t2i` | "pick any LoRA": the `lora_name` widget lists every LoRA on the shelf | any of `models/loras` |
+| `z-image-turbo-lora` | **Z-Image + the distill-patch LoRA** (`LoraLoaderModelOnly`, strength widget); the `lora_name` widget also lists every LoRA on the shared shelf, so it doubles as the "try any LoRA" template | + `z_image_turbo_distill_patch_lora_bf16`, any of `models/loras` |
 | `wan2.2-5b-ti2v` | text (+optional first frame) → video | wan 5B TI2V, umt5, wan2.2_vae |
 | `wan2.2-14b-t2v` | high+low noise T2V with **both** Wan Lightning LoRAs — **EXPERIMENTAL on a 16 GB card**, never run by a bed | both 14B UNETs, both LoRAs, umt5, wan_2.1_vae |
 | `sd15-baseline` | the classic checkpoint T2I path | `v1-5-pruned-emaonly-fp16` (env-sourced) |

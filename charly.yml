@@ -533,8 +533,8 @@ comfyui:
                 U=http://127.0.0.1:8188
                 LIST=$(curl -fsS --max-time 20 "${U}/api/workflow_templates")
                 COUNT=$(printf '%s' "${LIST}" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(len(d.get("charly_templates") or []))')
-                if [ "${COUNT}" != "12" ]; then
-                  echo "expected 12 charly_templates, got ${COUNT}: ${LIST}" >&2
+                if [ "${COUNT}" != "11" ]; then
+                  echo "expected 11 charly_templates, got ${COUNT}: ${LIST}" >&2
                   exit 1
                 fi
                 curl -fsS --max-time 20 "${U}/api/workflow_templates/charly_templates/qwen-image-2.1-turbo-t2i.json" > /dev/null

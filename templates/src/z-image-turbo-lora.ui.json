@@ -22,10 +22,10 @@
       "mode": 0,
       "inputs": [],
       "outputs": [],
-      "title": "Z-Image-Turbo + distill LoRA",
+      "title": "Z-Image-Turbo LoRA (and the shelf)",
       "properties": {},
       "widgets_values": [
-        "## Z-Image-Turbo + the distill-patch LoRA\n\n`z_image_turbo_distill_patch_lora_bf16` (Comfy-Org/Z-Image-Turbo) refines the turbo model's\ndistillation. It is loaded with `LoraLoaderModelOnly` on the MODEL link between the UNET loader\nand ModelSamplingAuraFlow, so the strength widget applies to the diffusion model only.\n\nRecommended: strength 1.0. The base graph is 8 steps / cfg 1; lower steps may suit the patch.\nBase models: `z_image_turbo_int8_convrot`, `qwen_3_4b_fp8_mixed`, `ae`."
+        "## Z-Image-Turbo + the distill-patch LoRA \u2014 and the whole LoRA shelf\n\n`z_image_turbo_distill_patch_lora_bf16` (Comfy-Org/Z-Image-Turbo) refines the turbo model's\ndistillation. It is loaded with `LoraLoaderModelOnly` on the MODEL link between the UNET loader\nand ModelSamplingAuraFlow; the strength widget applies to the diffusion model only.\nRecommended strength 1.0; lower steps may suit the patch.\n\nThe `lora_name` widget lists EVERY LoRA on the pod's shared shelf (`models/loras`, the same host\ndirectory the other AI pods mount), so this one template is also the way to try any LoRA you drop\nthere \u2014 switch the widget and set a strength (0.5-1.0 for most LoRAs). No new template needed.\n\nBase models: `z_image_turbo_int8_convrot`, `qwen_3_4b_fp8_mixed`, `ae`."
       ],
       "color": "#222",
       "bgcolor": "#000"

@@ -21,5 +21,4 @@ z-image-turbo-lora	templates/src/z-image-turbo-lora.ui.json	authored	-	Z-Image-T
 wan2.2-5b-ti2v	video_wan2_2_5B_ti2v.json	package	0.11.112	Wan 2.2 5B TI2V, flat graph, CreateVideo/SaveVideo
 wan2.2-14b-t2v	video_wan2_2_14B_t2v.json	package	0.11.112	Wan 2.2 14B T2V, high+low noise UNETs and both Lightning LoRAs; EXPERIMENTAL on 16 GB — not executed by the bed
 sd15-baseline	-	authored	-	the classic CheckpointLoaderSimple text2image graph on the env-sourced SD1.5 checkpoint
-lora-shelf-t2i	templates/src/lora-shelf-t2i.ui.json	authored	-	base Z-Image int8 graph with a LoraLoaderModelOnly whose lora_name widget lists every installed LoRA
 sam3d-body	utility_sam3d_body.json	package	0.11.112	SAM 3D Body pose/mesh pipeline (video-shaped): body model, SAM3.1 tracking, RT-DETR detector, MoGe geometry; Save3DAdvanced + SaveVideo; EXPERIMENTAL VRAM note in the skill

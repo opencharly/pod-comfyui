@@ -252,8 +252,13 @@ for api_path in api_files:
 # Optional: prove the committed UI is a fresh flatten of its source template.
 if MANIFEST_GIVEN == "1" and SRC_DIR:
     try:
+        # A manifest source like `templates/src/<name>.ui.json` is written relative to the
+        # DIRECTORY THAT CONTAINS templates/ — which is the repo root in a checkout and
+        # `/opt/comfyui` in the image (the tree is copied to /opt/comfyui/templates). Derive it
+        # from the MANIFEST, not from the converter's own path: the converter is copied to
+        # /opt/comfyui/ui-to-api.py, whose grandparent is `/opt` — the bug this replaced.
         repo_root = pathlib.Path(os.path.dirname(os.path.dirname(
-            os.path.abspath(CONVERTER))))
+            os.path.abspath(MANIFEST))))
         rows = []
         for raw in pathlib.Path(MANIFEST).read_text(encoding="utf-8").splitlines():
             line = raw.rstrip("\n")
