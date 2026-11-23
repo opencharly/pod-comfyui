@@ -726,7 +726,7 @@ comfyui:
               # The literal versions are the in-tree witness for the pixi.toml pins (the same
               # reason as the ref check: a braced variable would make the step SKIP).
               command: |
-                python3 - <<'PY'
+                /home/user/.pixi/envs/default/bin/python - <<'PY'
                 from importlib.metadata import version
                 want = {
                     "comfyui-frontend-package": "1.59.6",
@@ -738,6 +738,11 @@ comfyui:
                 print("pinned ComfyUI packages OK")
                 PY
               exit_status: 0
+            - check: the pixi environment interpreter exists at the path the image checks use
+              id: comfyui-pixi-python
+              file:
+                file: /home/user/.pixi/envs/default/bin/python
+                exists: true
             - check: the start script is present and executable
               id: comfyui-start-script
               file:
@@ -759,7 +764,7 @@ comfyui:
                 disabled, /api/manager/version answers 404, and every page shows the upgrade prompt
               id: comfyui-manager-version
               command: |
-                python - <<'PY'
+                /home/user/.pixi/envs/default/bin/python - <<'PY'
                 import importlib.util
                 from importlib.metadata import version
                 v = version("comfyui-manager")
