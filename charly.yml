@@ -68,7 +68,7 @@ comfyui:
             - name: COMFYUI_MODEL
               description: "File name the checkpoint is stored as, under models/checkpoints (default: v1-5-pruned-emaonly-fp16.safetensors)."
             - name: COMFYUI_IDLE_UNLOAD_SECS
-              description: "Seconds with an empty queue and no new prompt before the pod releases its loaded models (default 600; 0 disables). A shared GPU wants this; a dedicated one may not."
+              description: "Seconds with an empty queue and no new prompt before the pod releases its loaded models (default 300 = five minutes; 0 disables). A shared GPU wants this; a dedicated one may not."
         env_provide:
             COMFYUI_BASE_URL: "http://{{.ContainerName}}:8188"
             IMAGES_EDIT_COMFYUI_BASE_URL: "http://{{.ContainerName}}:8188"
