@@ -5,6 +5,12 @@ description = "ComfyUI + ComfyUI-Manager environment with NVIDIA ML stack"
 channels = ["conda-forge"]
 platforms = ["linux-64"]
 
+# The image builder appends this section when it is absent (glibc 2.39 for the Arch base). Declared
+# HERE so the lock is resolved for the platform the build actually installs on: with a bare
+# `linux-64` the lock has no `linux-64-glibc-2-39` entry and `pixi install --frozen` refuses.
+[system-requirements]
+libc = { family = "glibc", version = "2.39" }
+
 [dependencies]
 python = ">=3.13,<3.14"
 pip = "*"
