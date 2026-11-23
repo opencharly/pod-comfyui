@@ -53,6 +53,13 @@ comfyui:
             # verifies each sha256 before moving a file into place, and existing files are
             # skipped. See the file header for the disk budget.
             COMFYUI_MODEL_SET_WAIT_SECS: "600"
+            # IDLE UNLOAD: ComfyUI keeps every loaded model resident by design (Dynamic VRAM, and
+            # this candy deliberately does NOT pass --disable-smart-memory). On a shared card that
+            # holds ~12 GiB for as long as the pod runs. After this many seconds (default 300 = five
+            # minutes) with an empty queue and no new /history entry, the watcher POSTs /free {unload_models,free_memory}
+            # once and re-arms on the next prompt (a first prompt after idling pays a reload).
+            # 0 disables the policy. Measured: /free took the live pod from 11,840 to 402 MiB.
+            COMFYUI_IDLE_UNLOAD_SECS: "300"
         env_accept:
             - name: COMFYUI_MODEL_URL
               description: "Checkpoint download URL for first boot (default: the SD1.5 fp16 checkpoint this candy is proven with)."
@@ -60,6 +67,8 @@ comfyui:
               description: "sha256 of that checkpoint; the first-boot download is verified against it before the server starts."
             - name: COMFYUI_MODEL
               description: "File name the checkpoint is stored as, under models/checkpoints (default: v1-5-pruned-emaonly-fp16.safetensors)."
+            - name: COMFYUI_IDLE_UNLOAD_SECS
+              description: "Seconds with an empty queue and no new prompt before the pod releases its loaded models (default 300 = five minutes; 0 disables). A shared GPU wants this; a dedicated one may not."
         env_provide:
             COMFYUI_BASE_URL: "http://{{.ContainerName}}:8188"
             IMAGES_EDIT_COMFYUI_BASE_URL: "http://{{.ContainerName}}:8188"
@@ -518,6 +527,92 @@ comfyui:
                   exit 1
                 fi
                 echo "launch line carries --vram-headroom and no legacy VRAM-mode flag"
+            - run: write the idle-unload watcher that releases loaded models after an idle period
+              write: /opt/comfyui/idle-unload.sh
+              mode: "0755"
+              run_as: root
+              content: |
+                #!/bin/bash
+                set -eu
+                # ComfyUI keeps every loaded model resident once a prompt has run (Dynamic VRAM, and
+                # --disable-smart-memory is deliberately NOT passed). On a shared card that is ~12 GiB
+                # held forever, which starves every other GPU workload (measured: opencharly/pod-strata#6).
+                # After COMFYUI_IDLE_UNLOAD_SECS with an empty queue and no new /history entry, ask the
+                # server to release its models and empty the allocator, ONCE; a new prompt re-arms it.
+                BASE="${HOME}/ComfyUI"
+                INTERVAL="${COMFYUI_IDLE_UNLOAD_SECS:-300}"
+                LOG="${BASE}/idle-unload.log"
+                U=http://127.0.0.1:8188
+                case "$INTERVAL" in
+                  ''|*[!0-9]*) echo "COMFYUI_IDLE_UNLOAD_SECS must be an integer, got '$INTERVAL'" >&2; exit 2 ;;
+                esac
+                if [ "$INTERVAL" -eq 0 ]; then
+                  echo "idle unload disabled (COMFYUI_IDLE_UNLOAD_SECS=0)"
+                  exit 0
+                fi
+                last_activity=$(date +%s)
+                last_seen=""
+                armed=1
+                while :; do
+                  sleep 15
+                  queue=$(curl -fsS --max-time 10 "$U/queue" 2>/dev/null) || continue
+                  busy=$(printf '%s' "$queue" | grep -o '"prompt_id"' | wc -l)
+                  seen=$(curl -fsS --max-time 10 "$U/history?max_items=1" 2>/dev/null \
+                    | grep -oE '"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"' \
+                    | head -1 || true)
+                  now=$(date +%s)
+                  if [ "$busy" -ne 0 ] || [ "$seen" != "$last_seen" ]; then
+                    last_seen="$seen"
+                    last_activity=$now
+                    armed=1
+                    continue
+                  fi
+                  if [ "$armed" -eq 1 ] && [ $((now - last_activity)) -ge "$INTERVAL" ]; then
+                    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
+                      -X POST -H 'Content-Type: application/json' \
+                      -d '{"unload_models":true,"free_memory":true}' "$U/free" || true)
+                    printf '%s idle %ss: POST /free -> %s\n' "$(date -Is)" "$INTERVAL" "$code" >> "$LOG"
+                    armed=0
+                  fi
+                done
+            - run: write the check that proves /free really releases what the previous step loaded
+              write: /opt/comfyui/check-idle-unload.sh
+              mode: "0755"
+              run_as: root
+              content: |
+                #!/bin/bash
+                set -eu
+                # Asserts the MECHANISM, not the timer: comfyui-vram-offload runs first in the same bed
+                # and leaves the SD1.5 checkpoint resident, so /free must return 200 AND the server's own
+                # vram_free must recover. A check that only asserted "200" would pass over a server that
+                # answers and releases nothing.
+                U=http://127.0.0.1:8188
+                free_bytes() {
+                  curl -fsS --max-time 10 "$U/system_stats" \
+                    | python3 -c 'import json,sys; print(json.load(sys.stdin)["devices"][0]["vram_free"])'
+                }
+                before=$(free_bytes)
+                code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
+                  -X POST -H 'Content-Type: application/json' \
+                  -d '{"unload_models":true,"free_memory":true}' "$U/free")
+                if [ "$code" != "200" ]; then
+                  echo "POST /free answered $code" >&2
+                  exit 1
+                fi
+                # POLL until the release is observable (bounded), never a bare sleep: the free is
+                # asynchronous and a fixed delay is the timing constant R3 bans.
+                after=${before}
+                i=0
+                while [ "${i}" -lt 60 ]; do
+                  after=$(free_bytes)
+                  [ "${after}" -gt "${before}" ] && break
+                  i=$((i + 1))
+                done
+                echo "vram_free before=${before} after=${after} delta=$((after - before)) after ${i} poll(s)"
+                if [ "$after" -le "$before" ]; then
+                  echo "the release did not recover VRAM: before=${before} after=${after}" >&2
+                  exit 1
+                fi
             - run: write the check that the curated templates are served by the frontend's template API
               write: /opt/comfyui/check-templates-served.sh
               mode: "0755"
@@ -525,11 +620,6 @@ comfyui:
               content: |
                 #!/bin/bash
                 set -eu
-                # The pod installs the curated set as the `charly_templates` custom-node module in the
-                # state volume; the server lists it at /api/workflow_templates and serves each graph at
-                # /api/workflow_templates/charly_templates/<name>.json (the frontend then deep-links
-                # /?template=<name>&source=charly_templates). Both are asserted here, so a module that
-                # failed to install cannot pass as "the files are in the image".
                 U=http://127.0.0.1:8188
                 LIST=$(curl -fsS --max-time 20 "${U}/api/workflow_templates")
                 COUNT=$(printf '%s' "${LIST}" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(len(d.get("charly_templates") or []))')
@@ -556,11 +646,13 @@ comfyui:
                 mkdir -p "${BASE}"/models/{checkpoints,clip,clip_vision,configs,controlnet}
                 mkdir -p "${BASE}"/models/{diffusers,diffusion_models,embeddings,gligen,hypernetworks,loras}
                 mkdir -p "${BASE}"/models/{photomaker,style_models,text_encoders,unet,upscale_models,vae,vae_approx}
-                # CURATED TEMPLATE SET: a pod-owned custom-node module in the STATE volume. It is the
-                # only surface that lists templates in the frontend's Templates dialog without patching
-                # upstream: /api/workflow_templates/<module> -> /?template=<slug>&source=charly_templates.
-                # Refreshed in place when the shipped VERSION differs from the installed marker; the
-                # directory is the POD's own, so a refresh never touches a user's workflows.
+                # SAM 3D Body's loaders read these two folders (folder_paths: "detection",
+                # "geometry_estimation"); ComfyUI will not create them, and the fetcher needs them.
+                mkdir -p "${BASE}"/models/{detection,geometry_estimation}
+                # CURATED TEMPLATE SET: a pod-owned custom-node module in the STATE volume — the one
+                # surface that lists our graphs in the Templates dialog without patching upstream.
+                # Refreshed in place when the shipped VERSION differs; the directory is the POD's,
+                # so a refresh never touches a user's workflows.
                 TEMPLATES=/opt/comfyui/templates
                 TVER=$(cat "${TEMPLATES}/VERSION" 2>/dev/null || echo none)
                 TMOD="${BASE}/custom_nodes/charly_templates"
@@ -573,9 +665,6 @@ comfyui:
                   printf '%s\n' "${TVER}" > "${TMOD}/.version"
                   echo "template module charly_templates refreshed to ${TVER}"
                 fi
-                # SAM 3D Body's loaders read these two folders (folder_paths: "detection",
-                # "geometry_estimation"); ComfyUI will not create them, and the fetcher needs them.
-                mkdir -p "${BASE}"/models/{detection,geometry_estimation}
                 # ONE fetch path for every model file, whatever declares it. Resume into a
                 # .part, verify the sha256, then rename into place — extracted because the
                 # single checkpoint and the model set were two copies of this same sequence
@@ -612,6 +701,10 @@ comfyui:
                 else
                   touch "${BASE}/model-set.done"
                 fi
+                # IDLE UNLOAD: its own session, like the model-set fetch, so the exec below does not
+                # take it down. It releases the loaded models after COMFYUI_IDLE_UNLOAD_SECS of an
+                # empty queue (0 disables) — see idle-unload.sh for why that matters on a shared card.
+                setsid /opt/comfyui/idle-unload.sh > /dev/null 2>&1 &
                 # Memory policy: Dynamic VRAM is ON by default (torch >= 2.8, Nvidia) and is the
                 # mechanism that makes models larger than VRAM runnable. It faults weights in per
                 # layer and evicts under pressure. Do NOT pass --lowvram/--novram/--highvram/
@@ -671,6 +764,24 @@ comfyui:
               file:
                 file: /opt/comfyui/custom_nodes/ComfyUI-Manager
                 exists: false
+            - check: the comfyui-manager PACKAGE is installed and at least 4.2.1, the version the
+                frontend's Nodes Manager requires — without it --enable-manager is silently
+                disabled, /api/manager/version answers 404, and every page shows the upgrade prompt
+              id: comfyui-manager-version
+              command: |
+                python - <<'PY'
+                import importlib.util
+                from importlib.metadata import version
+                v = version("comfyui-manager")
+                parts = tuple(int(x) for x in v.split(".")[:3] if x.isdigit())
+                assert parts >= (4, 2, 1), ("comfyui-manager too old for the Nodes Manager", v)
+                # find_spec, not import: the wheel's __init__ imports `comfy`, which exists in this
+                # image but only on the app's path; the gate here is PRESENCE + VERSION, and main.py
+                # does the real import at start (measured: the module name is `comfyui_manager`).
+                assert importlib.util.find_spec("comfyui_manager") is not None, "comfyui_manager module missing"
+                print("comfyui-manager", v, "OK")
+                PY
+              exit_status: 0
             - check: aria2c is installed so model checkpoints can be fetched in parallel
               id: comfyui-aria2-binary
               file:
@@ -776,6 +887,17 @@ comfyui:
               # claim this step makes checkable. Logic lives in the baked script: an assert-only
               # step carries no shell variables at all (measured).
               command: /opt/comfyui/check-launch-flags.sh
+              exit_status: 0
+
+            - check: the pod releases its loaded models on request, and the server's own vram_free
+                recovers — the idle-unload policy's mechanism, proven rather than assumed
+              id: comfyui-idle-unload
+              context:
+                - runtime
+              # Runs AFTER comfyui-vram-offload in this same bed, which leaves the SD1.5 checkpoint
+              # resident; the check then POSTs /free and requires vram_free to grow. Logic lives in
+              # the baked script: an assert-only step carries no shell variables at all (measured).
+              command: /opt/comfyui/check-idle-unload.sh
               exit_status: 0
 
 

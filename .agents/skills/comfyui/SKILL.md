@@ -92,6 +92,32 @@ Two checks defend the contract:
   VRAM keeps a model resident, so a warm run legitimately shows little or no rise.
 - `comfyui-launch-flags` isolates the `exec` line and requires `--vram-headroom` while
   forbidding every legacy mode flag. It fails on the pre-cutover launcher.
+- `comfyui-idle-unload` runs after `comfyui-vram-offload` (which leaves the checkpoint resident),
+  POSTs `/free {"unload_models":true,"free_memory":true}` and requires the server's own
+  `vram_free` to recover. A check that only asserted `200` would pass over a server that
+  answers and releases nothing.
+
+## Idle unload (the shared-card policy)
+
+Dynamic VRAM keeps what fits **resident after a prompt** — measured on this host at ~12 GiB held
+on a 16 GiB card while the queue was empty. On a shared card that starves every other GPU
+workload, so the launcher starts `idle-unload.sh` in its own session: after
+`COMFYUI_IDLE_UNLOAD_SECS` (default **300** = five minutes; `0` disables) with an empty queue and
+no new `/history` entry, it POSTs `/free` once and re-arms on the next prompt. Measured:
+`/free` took the live pod from **11,840 MiB to 402 MiB** (all model weights released; the residual
+is the process's CUDA context), and the next generation reloaded and returned 200.
+
+A first prompt after an idle period pays a model reload — that is the trade for a card other
+workloads can use. The policy is logged to `<state>/idle-unload.log`.
+
+## ComfyUI-Manager
+
+The launcher passes `--enable-manager`, and `pixi.toml` pins the `comfyui-manager` **package**
+(`==4.4.2`) — the legacy `custom_nodes/ComfyUI-Manager` clone is deliberately absent
+(`comfyui-legacy-manager-absent`). The package is load-bearing: without it `main.py` disables the
+flag, `/api/manager/version` answers 404, and the frontend's Nodes Manager shows *"Please upgrade
+ComfyUI-Manager to version 4.2.1 or higher"* on every page. `comfyui-manager-version` asserts the
+package is importable and at least 4.2.1.
 
 ## When to Use This Skill
 

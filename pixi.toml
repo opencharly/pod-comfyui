@@ -73,6 +73,13 @@ sqlalchemy = "*"
 # COMFYUI-MANAGER PACKAGES
 # ============================================================
 
+# THE manager itself. `main.py` only honours --enable-manager when `import comfyui_manager`
+# succeeds; without this pin the flag is silently disabled, `/api/manager/version` answers 404,
+# and the frontend's Nodes Manager shows "Please upgrade ComfyUI-Manager to version 4.2.1 or
+# higher" on every load. 4.4.2 is the current release (Python >= 3.10). The dependency block
+# below it was already here — the package was the missing half.
+comfyui-manager = "==4.4.2"
+
 gitpython = "*"
 pygithub = "*"
 matrix-nio = "*"
