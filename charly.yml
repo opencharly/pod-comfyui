@@ -667,17 +667,26 @@ comfyui:
                 fi
                 # Every listed template must name only models that exist: the dialog must not offer
                 # a graph that would fail on Queue.
-                printf '%s' "${LIST}" | python3 - "${HOME}/ComfyUI/custom_nodes/charly_templates/example_workflows" <<'PYEOF'
+                LM=$(mktemp)
+                printf '%s' "${LIST}" > "${LM}"
+                # NOTE: the listing goes through a FILE, not a pipe: `python3 - args <<'EOF'` takes the
+                # SCRIPT from stdin, so a pipe would be swallowed and json.load would read nothing
+                # (measured — this check failed exactly that way on the bed).
+                if ! python3 - "${LM}" "${HOME}/ComfyUI/custom_nodes/charly_templates/example_workflows" <<'PYEOF'
                 import json, pathlib, sys
-                listing = json.load(sys.stdin).get("charly_templates") or []
+                listing = json.load(open(sys.argv[1])).get("charly_templates") or []
                 # MEASURED on this ComfyUI (0.46.1): the entries are plain STRINGS (template names),
-                # not objects, and carry no `models` field — asserting on one was vacuous and is
-                # removed. The real property is that the API lists exactly what the filter installed.
-                installed = sorted(p.stem for p in pathlib.Path(sys.argv[1]).glob("*.json"))
+                # not objects, and carry no `models` field — asserting on one was vacuous.
+                installed = sorted(p.stem for p in pathlib.Path(sys.argv[2]).glob("*.json"))
                 if listing != installed:
                     sys.exit("the API lists %r but %r are installed" % (listing, installed))
                 print("%d templates listed, and they are exactly the installed set" % len(listing))
                 PYEOF
+                then
+                  rm -f "${LM}"
+                  exit 1
+                fi
+                rm -f "${LM}"
                 FIRST=$(printf '%s' "${LIST}" | python3 -c 'import json,sys; d=json.load(sys.stdin).get("charly_templates") or []; print(d[0] if d else "")')
                 curl -fsS --max-time 20 "${U}/api/workflow_templates/charly_templates/${FIRST}.json" > /dev/null
                 echo "charly_templates: ${COUNT} of ${INSTALLED} installed templates listed, one fetched (${FIRST})"
@@ -711,18 +720,7 @@ comfyui:
                 if [ "$(cat "${TMOD}/.version" 2>/dev/null || true)" != "${TVER}" ]; then
                   rm -rf "${TMOD}"
                   mkdir -p "${TMOD}/example_workflows"
-                  # ONLY the templates that can RUN here: every model the graph names must be in
-                  # the state volume, and the card must have the memory its requirements row
-                  # declares. A template that would fail on Queue stays out of the dialog, and the
-                  # skip is printed with its reason (and written into the module's README.md).
-                  VRAM_GIB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null \
-                    | head -1 | awk '{printf "%d", $1/1024}')
-                  python3 "${TEMPLATES}/select-templates.py" \
-                    --templates "${TEMPLATES}/ui" \
-                    --requirements "${TEMPLATES}/requirements.tsv" \
-                    --models "${BASE}/models" \
-                    --vram-gib "${VRAM_GIB:-0}" \
-                    --dest "${TMOD}/example_workflows"
+                  # (the template SELECTION runs after the models are fetched — see below)
                   printf 'NODE_CLASS_MAPPINGS = {}\nNODE_DISPLAY_NAME_MAPPINGS = {}\n' > "${TMOD}/__init__.py"
                   printf '%s\n' "${TVER}" > "${TMOD}/.version"
                   echo "template module charly_templates refreshed to ${TVER}"
@@ -790,6 +788,20 @@ comfyui:
                   exit 78
                 fi
                 echo "start-comfyui: interpreter ${COMFY_PY} ($("${COMFY_PY}" -V 2>&1))"
+                # TEMPLATE SELECTION, on every start and AFTER the model fetch: the set is what the
+                # models on disk can actually run, so it must be computed once they are there. A
+                # fresh volume is empty at the early install point, and a VERSION-gated refresh would
+                # then never install anything (measured on the bed).
+                rm -rf "${TMOD}/example_workflows"
+                mkdir -p "${TMOD}/example_workflows"
+                VRAM_GIB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null \
+                  | head -1 | awk '{printf "%d", $1/1024}')
+                python3 "${TEMPLATES}/select-templates.py" \
+                  --templates "${TEMPLATES}/ui" \
+                  --requirements "${TEMPLATES}/requirements.tsv" \
+                  --models "${BASE}/models" \
+                  --vram-gib "${VRAM_GIB:-0}" \
+                  --dest "${TMOD}/example_workflows"
                 exec "${HOME}/.pixi/envs/default/bin/python3" /opt/comfyui/main.py --listen 0.0.0.0 --port 8188 \
                   --enable-manager --base-directory "${BASE}" \
                   --vram-headroom "${COMFYUI_VRAM_HEADROOM}"
