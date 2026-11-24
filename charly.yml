@@ -498,9 +498,27 @@ comfyui:
                   END { if (buf ~ /(^|[[:space:]])exec[[:space:]]/ && buf ~ /main\.py/) print buf }
                 ' "${LAUNCHER}")
                 if [ -z "${launch}" ]; then
-                  echo "no 'exec python ... main.py' launch line in ${LAUNCHER}" >&2
+                  echo "no 'exec ... main.py' launch line in ${LAUNCHER}" >&2
                   exit 1
                 fi
+                # The launch must run the PIXI interpreter, never bare `python`: the pixi env
+                # ships `python3` only, so `exec python` resolves to the distro interpreter,
+                # which has no PyYAML, and main.py's `from app import governance` → `import
+                # yaml` dies at import (opencharly/pod-comfyui#52 — three spawns, then FATAL).
+                case " ${launch} " in
+                  *".pixi/envs/"*"python"*) ;;
+                  *)
+                    echo "the launch line in ${LAUNCHER} must run the pixi env interpreter, not bare python:" >&2
+                    echo "launch line: ${launch}" >&2
+                    exit 1
+                    ;;
+                esac
+                case " ${launch} " in
+                  *"exec python "*)
+                    echo "the launch line in ${LAUNCHER} still runs bare 'python': ${launch}" >&2
+                    exit 1
+                    ;;
+                esac
                 # Dynamic VRAM is ON by default for torch >= 2.8 on Nvidia. The launch must carry
                 # --vram-headroom and must NOT carry a mode flag that disables the allocator.
                 missing=
@@ -749,7 +767,23 @@ comfyui:
                 # --disable-smart-memory, the legacy aggressive-offload switch. --vram-headroom is
                 # the one policy knob: VRAM kept completely free, counting other apps (declared as
                 # COMFYUI_VRAM_HEADROOM, default 1, overridable per deploy).
-                exec python /opt/comfyui/main.py --listen 0.0.0.0 --port 8188 \
+                # INTERPRETER: launch under the pixi environment's own interpreter, never bare
+                # `python`. The pixi env's bin dir is on PATH, but it ships `python3` and no bare
+                # `python`, so `exec python` falls through to the distro interpreter — and
+                # ComfyUI's main.py imports app.governance, whose first line is `import yaml`,
+                # which the pixi env has (pixi.toml: pyyaml) and the distro Python does not.
+                # The result is a crash-on-import that supervisord retries three times and gives
+                # up on (opencharly/pod-comfyui#52). Refuse to start without the env interpreter
+                # rather than inherit whatever PATH resolves to.
+                COMFY_PY="${HOME}/.pixi/envs/default/bin/python3"
+                if [ ! -x "${COMFY_PY}" ]; then
+                  echo "start-comfyui: no pixi interpreter at ${COMFY_PY} — the environment this" >&2
+                  echo "start-comfyui: launch depends on is missing; refusing to run another" >&2
+                  echo "start-comfyui: interpreter's python against ComfyUI's imports" >&2
+                  exit 78
+                fi
+                echo "start-comfyui: interpreter ${COMFY_PY} ($("${COMFY_PY}" -V 2>&1))"
+                exec "${COMFY_PY}" /opt/comfyui/main.py --listen 0.0.0.0 --port 8188 \
                   --enable-manager --base-directory "${BASE}" \
                   --vram-headroom "${COMFYUI_VRAM_HEADROOM}"
             - check: the image records the ComfyUI release tag it was built from
