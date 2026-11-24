@@ -28,7 +28,7 @@ comfyui:
         # layer's `nvidia-ctk` assertions as failures on a pod that must never have
         # `nvidia-ctk` at all (opencharly/pod-comfyui#24). The substrate belongs to the box.
         require:
-            - '@github.com/opencharly/layer-supervisord:v2026.271.1817'
+            - '@github.com/opencharly/layer-supervisord:v2026.314.0710'
         env:
             # A host-owned bind makes charly run the container as root under its keep-id
             # mapping, where the runtime HOME is /root — while the state volume and the
