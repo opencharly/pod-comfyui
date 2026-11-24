@@ -623,12 +623,39 @@ comfyui:
                 U=http://127.0.0.1:8188
                 LIST=$(curl -fsS --max-time 20 "${U}/api/workflow_templates")
                 COUNT=$(printf '%s' "${LIST}" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(len(d.get("charly_templates") or []))')
-                if [ "${COUNT}" != "11" ]; then
-                  echo "expected 11 charly_templates, got ${COUNT}: ${LIST}" >&2
+                # The set is FILTERED at install time: only templates whose models are present and
+                # whose declared GPU budget fits are copied, so the count is the INSTALLED count —
+                # asserting a fixed number would re-open exactly the defect this check exists for
+                # (a template in the dialog that cannot run). A fixed 11 is what this check used to
+                # demand, before the filter existed.
+                INSTALLED=$(ls "${HOME}/ComfyUI/custom_nodes/charly_templates/example_workflows"/*.json 2>/dev/null | wc -l)
+                if [ "${COUNT}" != "${INSTALLED}" ]; then
+                  echo "the API lists ${COUNT} charly_templates but ${INSTALLED} are installed: ${LIST}" >&2
                   exit 1
                 fi
-                curl -fsS --max-time 20 "${U}/api/workflow_templates/charly_templates/qwen-image-2.1-turbo-t2i.json" > /dev/null
-                echo "charly_templates: ${COUNT} templates listed, one fetched"
+                if [ "${COUNT}" -lt 1 ]; then
+                  echo "no charly_templates installed at all — every model is missing or the card is too small: ${LIST}" >&2
+                  exit 1
+                fi
+                # Every listed template must name only models that exist: the dialog must not offer
+                # a graph that would fail on Queue.
+                printf '%s' "${LIST}" | python3 - "${HOME}/ComfyUI/models" <<'PYEOF'
+                import json, pathlib, sys
+                listing = json.load(sys.stdin).get("charly_templates") or []
+                root = pathlib.Path(sys.argv[1])
+                present = {p.name for p in root.rglob("*") if p.is_file() and not p.name.endswith(".part")}
+                missing = []
+                for entry in listing:
+                    for name in (entry.get("models") or []):
+                        if name not in present:
+                            missing.append((entry.get("name"), name))
+                if missing:
+                    sys.exit("templates reference models that are not present: %r" % (missing,))
+                print("every listed template's models are present")
+                PYEOF
+                FIRST=$(printf '%s' "${LIST}" | python3 -c 'import json,sys; d=json.load(sys.stdin).get("charly_templates") or []; print(d[0]["name"] if d else "")')
+                curl -fsS --max-time 20 "${U}/api/workflow_templates/charly_templates/${FIRST}.json" > /dev/null
+                echo "charly_templates: ${COUNT} of ${INSTALLED} installed templates listed, one fetched (${FIRST})"
             - run: write the start script that seeds the state tree, ensures the model, then execs the server
               write: /opt/comfyui/start-comfyui.sh
               mode: "0755"
@@ -659,8 +686,18 @@ comfyui:
                 if [ "$(cat "${TMOD}/.version" 2>/dev/null || true)" != "${TVER}" ]; then
                   rm -rf "${TMOD}"
                   mkdir -p "${TMOD}/example_workflows"
-                  cp "${TEMPLATES}"/ui/*.json "${TMOD}/example_workflows/"
-                  cp "${TEMPLATES}/README.md" "${TMOD}/README.md" 2>/dev/null || true
+                  # ONLY the templates that can RUN here: every model the graph names must be in
+                  # the state volume, and the card must have the memory its requirements row
+                  # declares. A template that would fail on Queue stays out of the dialog, and the
+                  # skip is printed with its reason (and written into the module's README.md).
+                  VRAM_GIB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null \
+                    | head -1 | awk '{printf "%d", $1/1024}')
+                  python3 "${TEMPLATES}/select-templates.py" \
+                    --templates "${TEMPLATES}/ui" \
+                    --requirements "${TEMPLATES}/requirements.tsv" \
+                    --models "${BASE}/models" \
+                    --vram-gib "${VRAM_GIB:-0}" \
+                    --dest "${TMOD}/example_workflows"
                   printf 'NODE_CLASS_MAPPINGS = {}\nNODE_DISPLAY_NAME_MAPPINGS = {}\n' > "${TMOD}/__init__.py"
                   printf '%s\n' "${TVER}" > "${TMOD}/.version"
                   echo "template module charly_templates refreshed to ${TVER}"

@@ -1,0 +1,23 @@
+# templates/requirements.tsv — the GPU budget each curated template needs, in GiB.
+#
+# Columns: slug<TAB>min_gib<TAB>note
+#
+# A template is installed only when the card's measured total memory is >= min_gib AND every model
+# file the graph names is present in the state volume (select-templates.py). The number is the
+# DECLARED budget for the graph's model set — the sum of the weights it loads plus headroom — not a
+# measurement of peak use; it exists so an un-runnable template never reaches the Templates dialog.
+# A template with no row here aborts the install: unclassified is not the same as "fits".
+#
+# The experimental 14B Wan pair (two ~13 GiB UNETs) is deliberately above every card this pod runs
+# on; it stays listed here so the decision is explicit rather than a silent omission.
+sd15-baseline	4	SD1.5 fp16 checkpoint; the smallest graph, the one the build bed exercises
+z-image-turbo-int8	12	Z-Image Turbo int8 + fp8 text encoder; the 16 GiB-friendly Z-Image path
+z-image-turbo-lora	12	Z-Image int8 base + the distill-patch LoRA on LoraLoaderModelOnly
+z-image-turbo-bf16	16	Z-Image bf16 (11.5 GiB) + bf16 text encoder (7.5 GiB)
+qwen-image-2.1-turbo-t2i	12	Qwen-Image 2.1 turbo int8 + qwen3vl_8b int8 encoder
+qwen-image-2.1-turbo-edit	12	the same base with the multi-reference edit encoder
+qwen-image-edit-2511-lightning	12	Edit-2511 int8 + qwen_2.5_vl_7b fp8 + the 4-step Lightning LoRA
+qwen-image-edit-2511-multi-angle	12	Edit-2511 int8 with Lightning + multi-angles LoRAs stacked
+wan2.2-5b-ti2v	16	Wan 2.2 5B TI2V fp16 + fp8 text encoder
+wan2.2-14b-t2v	30	EXPERIMENTAL: two ~13 GiB 14B UNETs — cannot run on any card this pod targets
+sam3d-body	20	SAM 3D body: DINOv3 backbone + multiplex SAM + MoGe + RT-DETR
