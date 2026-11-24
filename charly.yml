@@ -639,7 +639,17 @@ comfyui:
                 #!/bin/bash
                 set -eu
                 U=http://127.0.0.1:8188
-                LIST=$(curl -fsS --max-time 20 "${U}/api/workflow_templates")
+                # The API answers only once the app is up; poll to a deadline rather than assuming.
+                LIST=
+                for _ in $(seq 1 30); do
+                  LIST=$(curl -fsS --max-time 5 "${U}/api/workflow_templates" 2>/dev/null || true)
+                  [ -n "${LIST}" ] && break
+                  sleep 2
+                done
+                if [ -z "${LIST}" ]; then
+                  echo "the template API did not answer within 60s" >&2
+                  exit 1
+                fi
                 COUNT=$(printf '%s' "${LIST}" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(len(d.get("charly_templates") or []))')
                 # The set is FILTERED at install time: only templates whose models are present and
                 # whose declared GPU budget fits are copied, so the count is the INSTALLED count —
@@ -657,21 +667,18 @@ comfyui:
                 fi
                 # Every listed template must name only models that exist: the dialog must not offer
                 # a graph that would fail on Queue.
-                printf '%s' "${LIST}" | python3 - "${HOME}/ComfyUI/models" <<'PYEOF'
+                printf '%s' "${LIST}" | python3 - "${HOME}/ComfyUI/custom_nodes/charly_templates/example_workflows" <<'PYEOF'
                 import json, pathlib, sys
                 listing = json.load(sys.stdin).get("charly_templates") or []
-                root = pathlib.Path(sys.argv[1])
-                present = {p.name for p in root.rglob("*") if p.is_file() and not p.name.endswith(".part")}
-                missing = []
-                for entry in listing:
-                    for name in (entry.get("models") or []):
-                        if name not in present:
-                            missing.append((entry.get("name"), name))
-                if missing:
-                    sys.exit("templates reference models that are not present: %r" % (missing,))
-                print("every listed template's models are present")
+                # MEASURED on this ComfyUI (0.46.1): the entries are plain STRINGS (template names),
+                # not objects, and carry no `models` field — asserting on one was vacuous and is
+                # removed. The real property is that the API lists exactly what the filter installed.
+                installed = sorted(p.stem for p in pathlib.Path(sys.argv[1]).glob("*.json"))
+                if listing != installed:
+                    sys.exit("the API lists %r but %r are installed" % (listing, installed))
+                print("%d templates listed, and they are exactly the installed set" % len(listing))
                 PYEOF
-                FIRST=$(printf '%s' "${LIST}" | python3 -c 'import json,sys; d=json.load(sys.stdin).get("charly_templates") or []; print(d[0]["name"] if d else "")')
+                FIRST=$(printf '%s' "${LIST}" | python3 -c 'import json,sys; d=json.load(sys.stdin).get("charly_templates") or []; print(d[0] if d else "")')
                 curl -fsS --max-time 20 "${U}/api/workflow_templates/charly_templates/${FIRST}.json" > /dev/null
                 echo "charly_templates: ${COUNT} of ${INSTALLED} installed templates listed, one fetched (${FIRST})"
             - run: write the start script that seeds the state tree, ensures the model, then execs the server
@@ -776,14 +783,14 @@ comfyui:
                 # up on (opencharly/pod-comfyui#52). Refuse to start without the env interpreter
                 # rather than inherit whatever PATH resolves to.
                 COMFY_PY="${HOME}/.pixi/envs/default/bin/python3"
-                if [ ! -x "${COMFY_PY}" ]; then
+                if [ ! -x "${HOME}/.pixi/envs/default/bin/python3" ]; then
                   echo "start-comfyui: no pixi interpreter at ${COMFY_PY} — the environment this" >&2
                   echo "start-comfyui: launch depends on is missing; refusing to run another" >&2
                   echo "start-comfyui: interpreter's python against ComfyUI's imports" >&2
                   exit 78
                 fi
                 echo "start-comfyui: interpreter ${COMFY_PY} ($("${COMFY_PY}" -V 2>&1))"
-                exec "${COMFY_PY}" /opt/comfyui/main.py --listen 0.0.0.0 --port 8188 \
+                exec "${HOME}/.pixi/envs/default/bin/python3" /opt/comfyui/main.py --listen 0.0.0.0 --port 8188 \
                   --enable-manager --base-directory "${BASE}" \
                   --vram-headroom "${COMFYUI_VRAM_HEADROOM}"
             - check: the image records the ComfyUI release tag it was built from
