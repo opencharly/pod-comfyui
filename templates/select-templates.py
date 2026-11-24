@@ -88,13 +88,17 @@ def main() -> int:
         if missing:
             skipped.append((slug, "models not present: " + ", ".join(missing)))
             continue
-        (dest / path.name).write_bytes(path.read_bytes())
+        # The pod's own mark in the name: the Templates dialog lists a template by its file stem,
+        # so `charly-<slug>` is what makes OUR set identifiable at a glance among upstream's
+        # bundled templates. The slug stays intact inside it, so the deep link is
+        # `?template=charly-<slug>&source=charly_templates`.
+        (dest / ("charly-" + path.name)).write_bytes(path.read_bytes())
         installed.append((slug, need))
 
     lines = ["# charly_templates — the pod's curated workflow set", "",
              "GPU budget: %d GiB. Installed only when every model the graph names is present." % vram, "",
              "## Installed", ""]
-    lines += ["- `%s` (needs %d GiB)" % (s, n) for s, n in installed] or ["- (none)"]
+    lines += ["- `charly-%s` (needs %d GiB)" % (s, n) for s, n in installed] or ["- (none)"]
     lines += ["", "## Not installed, and why", ""]
     lines += ["- `%s` — %s" % (s, why) for s, why in skipped] or ["- (none skipped)"]
     (dest.parent / "README.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
