@@ -50,8 +50,10 @@ comfyui-pod:
 # A VM: the guest owns its kernel module, so the box bakes the driver.
 comfyui-vm:
   candy:
-    base: <a GPU VM image composing layer-nvidia + layer-cuda>
+    base: cachyos.cachyos          # a distro base
     candy:
+      - '@github.com/opencharly/layer-nvidia:<tag>'
+      - '@github.com/opencharly/layer-cuda:<tag>'
       - '@github.com/opencharly/pod-comfyui'
 ```
 
