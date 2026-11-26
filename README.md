@@ -45,13 +45,13 @@ my-comfyui-pod:
 ```
 
 **A VM** — the guest owns its kernel module, so the driver user-space must be baked in.
-Base the box on `vm-nvidia`, which composes `layer-nvidia` + `layer-cuda`; composing this
+Base the box on a GPU VM image that composes `layer-nvidia` + `layer-cuda`; composing this
 candy on any other base, name those two layers yourself at the box's `candy:` level:
 
 ```yaml
 my-comfyui-vm:
   candy:
-    base: vm-nvidia
+    base: <a GPU VM image composing layer-nvidia + layer-cuda>
     candy:
       - '@github.com/opencharly/pod-comfyui:<tag>'
 ```
