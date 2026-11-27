@@ -9,7 +9,11 @@ Canonical files:
 
 - `charly.yml` — the `comfyui:` candy entity (description, `require`, `distro`,
   port, volume, service, plan) and its `skill:` entity.
-- `pixi.toml` / `pixi.lock` — the Python environment for the server.
+- `box/comfyui-cdi/charly.yml` — the `comfyui-cdi` IMAGE: `podcdi.pod-cdi` base, the LOCAL
+  `comfyui` candy (so the box proves this tree, not a pinned copy of itself) and `pod-dbus`.
+- `check-comfyui-pod` (this repo's `charly.yml`) — the disposable R10 bed that builds the image,
+  deploys it and drives the API plus the real generation path. It lives HERE with the box it tests.
+
 - `.github/workflows/tag-on-merge.yml` — CalVer tag + `CHANGELOG/` on merge.
 - `CHANGELOG/` — per-CalVer history.
 - `README.md` — user overview only; never agent guidance.
