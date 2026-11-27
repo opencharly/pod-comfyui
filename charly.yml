@@ -274,10 +274,23 @@ comfyui:
                   echo "the declared model set is empty; nothing to verify"
                   exit 0
                 fi
-                if [ -s "${BASE}/model-set-fetch.log" ] && grep -qE 'FAILED|SHA MISMATCH' "${BASE}/model-set-fetch.log"; then
-                  echo "the fetch reported a failure:" >&2
-                  grep -E 'FAILED|SHA MISMATCH' "${BASE}/model-set-fetch.log" >&2
-                  exit 1
+                # ONLY the CURRENT run counts. The log is appended across container restarts, one
+                # '=== fetch start <ts> ===' marker per run, so a failure from an OLD run must not keep
+                # this check red forever (opencharly/pod-comfyui#61: a SHA MISMATCH at line 93 of 14
+                # runs kept two consecutive live checks red, while the last run ended
+                # '=== fetch done ===' and every declared file hashed to its manifest value).
+                if [ -s "${BASE}/model-set-fetch.log" ]; then
+                  run_start=$(grep -n '^=== fetch start ' "${BASE}/model-set-fetch.log" | tail -1 | cut -d: -f1 || true)
+                  if [ -n "${run_start:-}" ]; then
+                    current_run=$(tail -n +"${run_start}" "${BASE}/model-set-fetch.log")
+                  else
+                    current_run=$(cat "${BASE}/model-set-fetch.log")
+                  fi
+                  if printf '%s\n' "${current_run}" | grep -qE 'FAILED|SHA MISMATCH'; then
+                    echo "the CURRENT fetch run reported a failure:" >&2
+                    printf '%s\n' "${current_run}" | grep -E 'FAILED|SHA MISMATCH' >&2
+                    exit 1
+                  fi
                 fi
                 # Wait, BOUNDED, for the first file to land. The set is ordered smallest-first,
                 # so the 335 MB VAE arrives in well under this; the bound exists only to turn a
