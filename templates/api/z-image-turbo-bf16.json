@@ -1,0 +1,110 @@
+{
+  "61": {
+    "class_type": "KSampler",
+    "inputs": {
+      "cfg": 1,
+      "denoise": 1,
+      "latent_image": [
+        "71",
+        0
+      ],
+      "model": [
+        "69",
+        0
+      ],
+      "negative": [
+        "91",
+        0
+      ],
+      "positive": [
+        "85",
+        0
+      ],
+      "sampler_name": "res_multistep",
+      "scheduler": "simple",
+      "seed": 0,
+      "steps": 8
+    }
+  },
+  "66": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "61",
+        0
+      ],
+      "vae": [
+        "87",
+        0
+      ]
+    }
+  },
+  "69": {
+    "class_type": "ModelSamplingAuraFlow",
+    "inputs": {
+      "model": [
+        "86",
+        0
+      ],
+      "shift": 3
+    }
+  },
+  "71": {
+    "class_type": "EmptySD3LatentImage",
+    "inputs": {
+      "batch_size": 1,
+      "height": 1024,
+      "width": 1024
+    }
+  },
+  "85": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": [
+        "88",
+        0
+      ],
+      "text": "Latina female with thick wavy hair, harbor boats and pastel houses behind. Breezy seaside light, warm tones, cinematic close-up. "
+    }
+  },
+  "86": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "z_image_turbo_bf16.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "87": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "ae.safetensors"
+    }
+  },
+  "88": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen_3_4b.safetensors",
+      "device": "default",
+      "type": "lumina2"
+    }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "z-image-turbo",
+      "images": [
+        "66",
+        0
+      ]
+    }
+  },
+  "91": {
+    "class_type": "ConditioningZeroOut",
+    "inputs": {
+      "conditioning": [
+        "85",
+        0
+      ]
+    }
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "1": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "v1-5-pruned-emaonly-fp16.safetensors"
+    }
+  },
+  "2": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": [
+        "1",
+        1
+      ],
+      "text": "a photograph of a red apple on a plain wooden table, soft daylight"
+    }
+  },
+  "3": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": [
+        "1",
+        1
+      ],
+      "text": "blurry, low quality, watermark"
+    }
+  },
+  "4": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "batch_size": 1,
+      "height": 512,
+      "width": 512
+    }
+  },
+  "5": {
+    "class_type": "KSampler",
+    "inputs": {
+      "cfg": 7.5,
+      "denoise": 1,
+      "latent_image": [
+        "4",
+        0
+      ],
+      "model": [
+        "1",
+        0
+      ],
+      "negative": [
+        "3",
+        0
+      ],
+      "positive": [
+        "2",
+        0
+      ],
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "seed": 156680208700286,
+      "steps": 20
+    }
+  },
+  "6": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "5",
+        0
+      ],
+      "vae": [
+        "1",
+        2
+      ]
+    }
+  },
+  "7": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "sd15-baseline",
+      "images": [
+        "6",
+        0
+      ]
+    }
+  }
+}

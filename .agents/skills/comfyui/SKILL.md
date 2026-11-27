@@ -198,6 +198,41 @@ Because it replaces the `loras` directory inside the `comfyui` volume, treat it 
 shelf: anything you drop there shows up in ComfyUI's LoraLoader, and anything trained in the
 toolkit pod appears without a restart.
 
+## Curated templates (the Templates dialog)
+
+The pod installs `templates/` as a pod-owned custom-node module in the state volume
+(`<base>/custom_nodes/charly_templates/`), refreshed in place when `templates/VERSION` changes.
+It is the only surface that lists **our** graphs in the frontend's Templates dialog without
+patching upstream, and it never touches a user's own workflows.
+
+| slug | capability | models |
+|---|---|---|
+| `qwen-image-2.1-turbo-t2i` | T2I, 8-step (includes the 9B prompt-enhancer t2i branch) | turbo int8 UNET, qwen3vl_8b, 2.1 VAE, PE t2i |
+| `qwen-image-2.1-turbo-edit` | image edit (includes the prompt-enhancer i2i branch) | turbo int8, qwen3vl_8b, 2.1 VAE, PE i2i |
+| `qwen-image-edit-2511-lightning` | single-image edit, 4-step Lightning LoRA | edit_2511 int8, qwen_2.5_vl, qwen_image_vae |
+| `qwen-image-edit-2511-multi-angle` | **two LoRAs stacked** (Lightning + multi-angles) with `CameraAngle` | same + both LoRAs |
+| `z-image-turbo-int8` / `z-image-turbo-bf16` | T2I, 8-step cfg 1 | z_image int8/bf16, qwen_3_4b, `ae` |
+| `z-image-turbo-lora` | **Z-Image + the distill-patch LoRA** (`LoraLoaderModelOnly`, strength widget); the `lora_name` widget also lists every LoRA on the shared shelf, so it doubles as the "try any LoRA" template | + `z_image_turbo_distill_patch_lora_bf16`, any of `models/loras` |
+| `wan2.2-5b-ti2v` | text (+optional first frame) → video | wan 5B TI2V, umt5, wan2.2_vae |
+| `wan2.2-14b-t2v` | high+low noise T2V with **both** Wan Lightning LoRAs — **EXPERIMENTAL on a 16 GB card**, never run by a bed | both 14B UNETs, both LoRAs, umt5, wan_2.1_vae |
+| `sd15-baseline` | the classic checkpoint T2I path | `v1-5-pruned-emaonly-fp16` (env-sourced) |
+| `sam3d-body` | **SAM 3D Body** pose/mesh pipeline (video-shaped): tracking + detector + MoGe geometry → `Save3DAdvanced` + `SaveVideo` | sam_3d_body_dinov3_bf16, sam3.1_multiplex, rt_detr_v4-x-hgnet, moge_2_vitl |
+
+**Open one:** `http://<pod>:8188/?template=<slug>&source=charly_templates` (the frontend's
+Templates dialog lists them under "charly_templates" as well). A first open after an image update
+may need a page reload: the module is refreshed at start.
+
+**One canonical source, generated twins.** `templates/ui/*.json` are the graphs; every packaged
+one is a *flattened* copy of the pinned `comfyui_workflow_templates_json` template named in
+`templates/manifest.tsv`, and `templates/api/*.json` are generated from them by
+`scripts/ui-to-api.py` (widget order from `templates/object_info.json`). `comfyui-templates-complete`
+proves regeneration is a no-op, that every model a template names has a manifest row, and that
+every manifest model is showcased — or listed in `templates/allowlist.tsv` with its reason (today:
+`loras/pytorch_lora_weights`, whose base Qwen-Image-2.1 model is not in the set).
+
+**Coverage note:** adding a model to `models/model-manifest.tsv` without a template fails the build.
+That is the point; the allow-list is the explicit escape hatch.
+
 ## Related
 
 - `/charly-image:image` — image family umbrella (`candy:` image entries — those carrying `base:`/`from:` — in `charly.yml`, build/validate/inspect/list)

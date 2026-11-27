@@ -60,7 +60,7 @@ comfyui:
         # layer's `nvidia-ctk` assertions as failures on a pod that must never have
         # `nvidia-ctk` at all (opencharly/pod-comfyui#24). The substrate belongs to the box.
         require:
-            - '@github.com/opencharly/layer-supervisord:v2026.314.0710'
+            - '@github.com/opencharly/layer-supervisord:v2026.271.1817'
         env:
             # A host-owned bind makes charly run the container as root under its keep-id
             # mapping, where the runtime HOME is /root — while the state volume and the
@@ -175,6 +175,25 @@ comfyui:
               copy: workflows/wan2.2-5b-ti2v.api.json
               to: /opt/comfyui/workflows/wan2.2-5b-ti2v.api.json
               mode: "0644"
+              run_as: root
+            - run: copy the curated template set — UI graphs, their generated API twins and the provenance files
+              copy: templates
+              to: /opt/comfyui/templates
+              run_as: root
+            - run: copy the template gate
+              copy: scripts/check-templates.sh
+              to: /opt/comfyui/check-templates.sh
+              mode: "0755"
+              run_as: root
+            - run: copy the ONE converter that regenerates the API twins from the UI graphs
+              copy: scripts/ui-to-api.py
+              to: /opt/comfyui/ui-to-api.py
+              mode: "0755"
+              run_as: root
+            - run: copy the template-set version stamper
+              copy: scripts/templates-version.sh
+              to: /opt/comfyui/templates-version.sh
+              mode: "0755"
               run_as: root
             - run: install the manifest/workflow completeness gate
               copy: scripts/check-model-manifest.sh
@@ -655,6 +674,65 @@ comfyui:
                   echo "the release did not recover VRAM: before=${before} after=${after}" >&2
                   exit 1
                 fi
+            - run: write the check that the curated templates are served by the frontend's template API
+              write: /opt/comfyui/check-templates-served.sh
+              mode: "0755"
+              run_as: root
+              content: |
+                #!/bin/bash
+                set -eu
+                U=http://127.0.0.1:8188
+                # The API answers only once the app is up; poll to a deadline rather than assuming.
+                LIST=
+                for _ in $(seq 1 30); do
+                  LIST=$(curl -fsS --max-time 5 "${U}/api/workflow_templates" 2>/dev/null || true)
+                  [ -n "${LIST}" ] && break
+                  sleep 2
+                done
+                if [ -z "${LIST}" ]; then
+                  echo "the template API did not answer within 60s" >&2
+                  exit 1
+                fi
+                COUNT=$(printf '%s' "${LIST}" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(len(d.get("charly_templates") or []))')
+                # The set is FILTERED at install time: only templates whose models are present and
+                # whose declared GPU budget fits are copied, so the count is the INSTALLED count —
+                # asserting a fixed number would re-open exactly the defect this check exists for
+                # (a template in the dialog that cannot run). A fixed 11 is what this check used to
+                # demand, before the filter existed.
+                INSTALLED=$(ls "${HOME}/ComfyUI/custom_nodes/charly_templates/example_workflows"/*.json 2>/dev/null | wc -l)
+                if [ "${COUNT}" != "${INSTALLED}" ]; then
+                  echo "the API lists ${COUNT} charly_templates but ${INSTALLED} are installed: ${LIST}" >&2
+                  exit 1
+                fi
+                if [ "${COUNT}" -lt 1 ]; then
+                  echo "no charly_templates installed at all — every model is missing or the card is too small: ${LIST}" >&2
+                  exit 1
+                fi
+                # Every listed template must name only models that exist: the dialog must not offer
+                # a graph that would fail on Queue.
+                LM=$(mktemp)
+                printf '%s' "${LIST}" > "${LM}"
+                # NOTE: the listing goes through a FILE, not a pipe: `python3 - args <<'EOF'` takes the
+                # SCRIPT from stdin, so a pipe would be swallowed and json.load would read nothing
+                # (measured — this check failed exactly that way on the bed).
+                if ! python3 - "${LM}" "${HOME}/ComfyUI/custom_nodes/charly_templates/example_workflows" <<'PYEOF'
+                import json, pathlib, sys
+                listing = json.load(open(sys.argv[1])).get("charly_templates") or []
+                # MEASURED on this ComfyUI (0.46.1): the entries are plain STRINGS (template names),
+                # not objects, and carry no `models` field — asserting on one was vacuous.
+                installed = sorted(p.stem for p in pathlib.Path(sys.argv[2]).glob("*.json"))
+                if listing != installed:
+                    sys.exit("the API lists %r but %r are installed" % (listing, installed))
+                print("%d templates listed, and they are exactly the installed set" % len(listing))
+                PYEOF
+                then
+                  rm -f "${LM}"
+                  exit 1
+                fi
+                rm -f "${LM}"
+                FIRST=$(printf '%s' "${LIST}" | python3 -c 'import json,sys; d=json.load(sys.stdin).get("charly_templates") or []; print(d[0] if d else "")')
+                curl -fsS --max-time 20 "${U}/api/workflow_templates/charly_templates/${FIRST}.json" > /dev/null
+                echo "charly_templates: ${COUNT} of ${INSTALLED} installed templates listed, one fetched (${FIRST})"
             - run: write the start script that seeds the state tree, ensures the model, then execs the server
               write: /opt/comfyui/start-comfyui.sh
               mode: "0755"
@@ -672,6 +750,24 @@ comfyui:
                 mkdir -p "${BASE}"/models/{checkpoints,clip,clip_vision,configs,controlnet}
                 mkdir -p "${BASE}"/models/{diffusers,diffusion_models,embeddings,gligen,hypernetworks,loras}
                 mkdir -p "${BASE}"/models/{photomaker,style_models,text_encoders,unet,upscale_models,vae,vae_approx}
+                # SAM 3D Body's loaders read these two folders (folder_paths: "detection",
+                # "geometry_estimation"); ComfyUI will not create them, and the fetcher needs them.
+                mkdir -p "${BASE}"/models/{detection,geometry_estimation}
+                # CURATED TEMPLATE SET: a pod-owned custom-node module in the STATE volume — the one
+                # surface that lists our graphs in the Templates dialog without patching upstream.
+                # Refreshed in place when the shipped VERSION differs; the directory is the POD's,
+                # so a refresh never touches a user's workflows.
+                TEMPLATES=/opt/comfyui/templates
+                TVER=$(cat "${TEMPLATES}/VERSION" 2>/dev/null || echo none)
+                TMOD="${BASE}/custom_nodes/charly_templates"
+                if [ "$(cat "${TMOD}/.version" 2>/dev/null || true)" != "${TVER}" ]; then
+                  rm -rf "${TMOD}"
+                  mkdir -p "${TMOD}/example_workflows"
+                  # (the template SELECTION runs after the models are fetched — see below)
+                  printf 'NODE_CLASS_MAPPINGS = {}\nNODE_DISPLAY_NAME_MAPPINGS = {}\n' > "${TMOD}/__init__.py"
+                  printf '%s\n' "${TVER}" > "${TMOD}/.version"
+                  echo "template module charly_templates refreshed to ${TVER}"
+                fi
                 # ONE fetch path for every model file, whatever declares it. Resume into a
                 # .part, verify the sha256, then rename into place — extracted because the
                 # single checkpoint and the model set were two copies of this same sequence
@@ -728,14 +824,28 @@ comfyui:
                 # up on (opencharly/pod-comfyui#52). Refuse to start without the env interpreter
                 # rather than inherit whatever PATH resolves to.
                 COMFY_PY="${HOME}/.pixi/envs/default/bin/python3"
-                if [ ! -x "${COMFY_PY}" ]; then
+                if [ ! -x "${HOME}/.pixi/envs/default/bin/python3" ]; then
                   echo "start-comfyui: no pixi interpreter at ${COMFY_PY} — the environment this" >&2
                   echo "start-comfyui: launch depends on is missing; refusing to run another" >&2
                   echo "start-comfyui: interpreter's python against ComfyUI's imports" >&2
                   exit 78
                 fi
                 echo "start-comfyui: interpreter ${COMFY_PY} ($("${COMFY_PY}" -V 2>&1))"
-                exec "${COMFY_PY}" /opt/comfyui/main.py --listen 0.0.0.0 --port 8188 \
+                # TEMPLATE SELECTION, on every start and AFTER the model fetch: the set is what the
+                # models on disk can actually run, so it must be computed once they are there. A
+                # fresh volume is empty at the early install point, and a VERSION-gated refresh would
+                # then never install anything (measured on the bed).
+                rm -rf "${TMOD}/example_workflows"
+                mkdir -p "${TMOD}/example_workflows"
+                VRAM_GIB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null \
+                  | head -1 | awk '{printf "%d", $1/1024}')
+                python3 "${TEMPLATES}/select-templates.py" \
+                  --templates "${TEMPLATES}/ui" \
+                  --requirements "${TEMPLATES}/requirements.tsv" \
+                  --models "${BASE}/models" \
+                  --vram-gib "${VRAM_GIB:-0}" \
+                  --dest "${TMOD}/example_workflows"
+                exec "${HOME}/.pixi/envs/default/bin/python3" /opt/comfyui/main.py --listen 0.0.0.0 --port 8188 \
                   --enable-manager --base-directory "${BASE}" \
                   --vram-headroom "${COMFYUI_VRAM_HEADROOM}"
             - check: the image records the ComfyUI release tag it was built from
@@ -869,6 +979,21 @@ comfyui:
               context:
                 - build
               command: /opt/comfyui/check-workflow-provides.sh
+              exit_status: 0
+
+            - check: the curated template set regenerates to a no-op, every model it names is in the
+                manifest, and every manifest model is showcased (or explicitly allowlisted)
+              id: comfyui-templates-complete
+              context:
+                - build
+              command: /opt/comfyui/check-templates.sh --ui-dir /opt/comfyui/templates/ui --api-dir /opt/comfyui/templates/api --manifest /opt/comfyui/templates/manifest.tsv --allowlist /opt/comfyui/templates/allowlist.tsv --model-manifest /opt/comfyui/model-manifest.tsv --version-file /opt/comfyui/templates/VERSION --object-info /opt/comfyui/templates/object_info.json --src-dir /home/user/.pixi/envs/default/lib/python3.13/site-packages/comfyui_workflow_templates_json/templates
+              exit_status: 0
+
+            - check: the curated templates are served by the frontend's template API and fetch as JSON
+              id: comfyui-templates-listed
+              context:
+                - runtime
+              command: /opt/comfyui/check-templates-served.sh
               exit_status: 0
 
             - check: a prompt completes without OOM under Dynamic VRAM
