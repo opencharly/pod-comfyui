@@ -518,14 +518,25 @@ comfyui:
                 # ships `python3` only, so `exec python` resolves to the distro interpreter,
                 # which has no PyYAML, and main.py's `from app import governance` → `import
                 # yaml` dies at import (opencharly/pod-comfyui#52 — three spawns, then FATAL).
-                case " ${launch} " in
-                  *".pixi/envs/"*"python"*) ;;
-                  *)
-                    echo "the launch line in ${LAUNCHER} must run the pixi env interpreter, not bare python:" >&2
-                    echo "launch line: ${launch}" >&2
-                    exit 1
-                    ;;
-                esac
+                # The launcher may name the interpreter LITERALLY or through a variable it assigns
+                # a pixi path to. The emitted script does the latter
+                # (`COMFY_PY="${HOME}/.pixi/envs/default/bin/python3"` then `exec "${COMFY_PY}" …`),
+                # so this arm resolves the exec's PROGRAM through its assignment in the same file.
+                # Demanding one spelling of the path made this check red on a launcher that already
+                # runs the right interpreter (measured on the comfyui bed, 2026.331.0347).
+                interp_ok=0
+                case " ${launch} " in *".pixi/envs/"*"python"*) interp_ok=1 ;; esac
+                if [ "${interp_ok}" -eq 0 ]; then
+                  exec_var=$(printf '%s\n' "${launch}" | sed -nE 's/^[[:space:]]*exec[[:space:]]+"?[$][{]?([A-Za-z_][A-Za-z0-9_]*)[}]?"?([[:space:]]|$).*/\1/p')
+                  if [ -n "${exec_var}" ] && grep -qE "^[[:space:]]*(export[[:space:]]+)?${exec_var}=[\"']?[^\"']*\.pixi/envs/[^\"']*python" "${LAUNCHER}"; then
+                    interp_ok=1
+                  fi
+                fi
+                if [ "${interp_ok}" -eq 0 ]; then
+                  echo "the launch line in ${LAUNCHER} must run the pixi env interpreter, not bare python:" >&2
+                  echo "launch line: ${launch}" >&2
+                  exit 1
+                fi
                 case " ${launch} " in
                   *"exec python "*)
                     echo "the launch line in ${LAUNCHER} still runs bare 'python': ${launch}" >&2
