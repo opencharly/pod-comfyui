@@ -1,3 +1,35 @@
+#  opencharly/pod-comfyui — the ComfyUI service: the `comfyui` candy, its pixi
+#  environment, models dir and scripts at the repo root, and now the `comfyui-cdi`
+#  image box and its disposable R10 bed, which live HERE with the service they test
+#  (AGENTS.md "Repo classes and naming": a bed lives with the thing it tests).
+#
+#  A standalone consumer declares what a copy inside a distro inherited: the base
+#  as a NAMESPACED import at the project root (a namespace mounted by a discovered
+#  document does not resolve a box's own `base:`), and the pixi/aur builder
+#  vocabulary (a builder map does not cross a namespace boundary).
+defaults:
+    platform:
+        - linux/amd64
+    tag: auto
+    registry: ghcr.io/opencharly
+    build:
+        - pac
+    builder:
+        aur: arch.arch-builder
+        cargo: arch.arch-builder
+        npm: arch.arch-builder
+        pixi: arch.arch-builder
+    merge:
+        auto: false
+        max_mb: 128
+import:
+    - cachyos: '@github.com/opencharly/distro-cachyos:v2026.331.0132'
+    - arch: '@github.com/opencharly/distro-arch:v2026.330.1808'
+    - podcdi: '@github.com/opencharly/pod-cdi:v2026.329.2115'
+discover:
+    - path: box
+      recursive: true
+
 comfyui:
     candy:
         description: |
@@ -486,14 +518,25 @@ comfyui:
                 # ships `python3` only, so `exec python` resolves to the distro interpreter,
                 # which has no PyYAML, and main.py's `from app import governance` → `import
                 # yaml` dies at import (opencharly/pod-comfyui#52 — three spawns, then FATAL).
-                case " ${launch} " in
-                  *".pixi/envs/"*"python"*) ;;
-                  *)
-                    echo "the launch line in ${LAUNCHER} must run the pixi env interpreter, not bare python:" >&2
-                    echo "launch line: ${launch}" >&2
-                    exit 1
-                    ;;
-                esac
+                # The launcher may name the interpreter LITERALLY or through a variable it assigns
+                # a pixi path to. The emitted script does the latter
+                # (`COMFY_PY="${HOME}/.pixi/envs/default/bin/python3"` then `exec "${COMFY_PY}" …`),
+                # so this arm resolves the exec's PROGRAM through its assignment in the same file.
+                # Demanding one spelling of the path made this check red on a launcher that already
+                # runs the right interpreter (measured on the comfyui bed, 2026.331.0347).
+                interp_ok=0
+                case " ${launch} " in *".pixi/envs/"*"python"*) interp_ok=1 ;; esac
+                if [ "${interp_ok}" -eq 0 ]; then
+                  exec_var=$(printf '%s\n' "${launch}" | sed -nE 's/^[[:space:]]*exec[[:space:]]+"?[$][{]?([A-Za-z_][A-Za-z0-9_]*)[}]?"?([[:space:]]|$).*/\1/p')
+                  if [ -n "${exec_var}" ] && grep -qE "^[[:space:]]*(export[[:space:]]+)?${exec_var}=[\"']?[^\"']*\.pixi/envs/[^\"']*python" "${LAUNCHER}"; then
+                    interp_ok=1
+                  fi
+                fi
+                if [ "${interp_ok}" -eq 0 ]; then
+                  echo "the launch line in ${LAUNCHER} must run the pixi env interpreter, not bare python:" >&2
+                  echo "launch line: ${launch}" >&2
+                  exit 1
+                fi
                 case " ${launch} " in
                   *"exec python "*)
                     echo "the launch line in ${LAUNCHER} still runs bare 'python': ${launch}" >&2
@@ -897,3 +940,91 @@ comfyui-layer-skill:
         name: comfyui-layer
         family: comfyui
         owner: comfyui
+
+# Disposable R10 pod bed for the comfyui-cdi image.
+check-comfyui-pod:
+    pod:
+        image: comfyui-cdi
+        disposable: true
+        lifecycle: dev
+        # The model cache is a HOST directory shared with the live ComfyUI deployment and the
+        # other ComfyUI beds, so the ~12 GB Z-Image set is fetched once, not once per run. The
+        # parent `comfyui` volume stays a FRESH named volume: only models are shared, while
+        # every mutable state file (custom_nodes, user, database) is still seeded from zero.
+        volume:
+            - name: comfyui-models
+              type: bind
+              host: ~/.local/share/charly/models/comfyui/models
+              path: /home/user/ComfyUI/models
+        # GPU-CDI pod on the refcounted axis: the bed asserts a CUDA device below, so it must
+        # claim the card through the arbiter (the older bed omitted this claim).
+        requires_shared: [nvidia-gpu]
+        description: >-
+            Sole proof that the ComfyUI pod built through the CDI base RUNS, that the
+            runtime injects the host driver (no baked user-space), and that the API
+            answers on 8188.
+        plan:
+            - check: the ComfyUI HTTP API answers on its published port
+              id: comfyui-api
+              http:
+                http: http://127.0.0.1:${HOST_PORT:8188}/system_stats
+                status: 200
+              # On a FRESH volume the server is still fetching its model when this
+              # first runs (pod-comfyui's own runtime check measures the same); the window makes
+              # a cold boot a wait instead of a failure.
+              eventually: 300s
+              retry_interval: 10s
+              context:
+                - runtime
+            - check: the running server reports the ComfyUI release this box pins (0.46.1)
+              id: comfyui-served-version
+              http:
+                http: http://127.0.0.1:${HOST_PORT:8188}/system_stats
+                status: 200
+                body:
+                    - contains: '"comfyui_version": "0.46.1"'
+              eventually: 300s
+              retry_interval: 10s
+              context: [runtime]
+            - check: the bound pod runs with the image user's HOME, so the state volume and the models bind are used
+              id: comfyui-home-pinned
+              context: [runtime]
+              exit_status: 0
+              command:
+                command: |
+                  set -eu
+                  test "$(printenv HOME)" = /home/user
+                  test -s "/home/user/ComfyUI/models/checkpoints/$COMFYUI_MODEL"
+              # This bed is a host-owned bind: the nested `comfyui-models` volume at
+              # /home/user/ComfyUI/models makes charly run the container as root under keep-id,
+              # where HOME is /root. The check is RED before the candy pins HOME and GREEN after.
+            - check: ComfyUI sees a CUDA device — the runtime injected the host driver
+              id: comfyui-cuda-device
+              # `type` is the torch device type on each entry of `/system_stats.devices`
+              # (ComfyUI v0.45.3 server.py: `"type": d.type`), so it reads "cuda" only when the
+              # container actually resolved a GPU — which is what the CDI injection is for. An
+              # image that baked no driver and got no injection reports "cpu". Asserted through
+              # the documented `http:` verb with a body contains matcher, exactly as pod-comfyui
+              # asserts its own `/system_stats` liveness, so no tool has to exist in the image.
+              http:
+                http: http://127.0.0.1:${HOST_PORT:8188}/system_stats
+                status: 200
+                body:
+                    - contains: '"type": "cuda"'
+              eventually: 300s
+              retry_interval: 10s
+              context: [runtime]
+            - check: no host-side nvidia-ctk is baked into the image
+              id: comfyui-no-baked-driver
+              # The LIBRARY half of "no baked driver" cannot be decided HERE: the CDI runtime
+              # mounts the HOST's library into this very container, so a path probe under
+              # /usr/lib{,64} finds the injected file on a CORRECT image. That half is proven at
+              # build time by layer-cdi's `cdi-no-baked-driver-libs`, which runs where no
+              # injection exists — one canonical assertion, not two. `nvidia-ctk` is different:
+              # it is a HOST CLI that no CDI spec injects, so its absence here IS the image's own
+              # state.
+              context: [runtime]
+              command:
+                command: |
+                  ! command -v nvidia-ctk
+                in_container: true

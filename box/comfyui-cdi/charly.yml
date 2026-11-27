@@ -1,0 +1,10 @@
+comfyui-cdi:
+    candy:
+        base: podcdi.pod-cdi
+        platform:
+            - linux/amd64
+        candy:
+            # The candy THIS repo owns: the box proves the tree, not a pinned copy of itself.
+            # The candy's own `require:` brings layer-supervisord at ITS tag.
+            - comfyui
+            - '@github.com/opencharly/pod-dbus:v2026.274.0648'
