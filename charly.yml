@@ -655,6 +655,25 @@ comfyui:
                   echo "the release did not recover VRAM: before=${before} after=${after}" >&2
                   exit 1
                 fi
+            - run: write the check that Nodes 2.0 is the pod's default
+              write: /opt/comfyui/check-nodes-2.sh
+              mode: "0755"
+              run_as: root
+              content: |
+                #!/bin/bash
+                set -eu
+                # The pod seeds Comfy.VueNodes.Enabled=true when the key is ABSENT (a user's explicit
+                # choice wins). This asserts the SETTING IS PRESENT in the user settings file the
+                # frontend reads at start — not that it is true, so a user who turned Nodes 2.0 off
+                # does not turn this red.
+                S="${HOME}/ComfyUI/user/default/comfy.settings.json"
+                [ -s "${S}" ] || { echo "no user settings at ${S}" >&2; exit 1; }
+                python3 - "${S}" <<'PY'
+                import json, sys
+                d = json.load(open(sys.argv[1]))
+                assert isinstance(d, dict) and "Comfy.VueNodes.Enabled" in d, "Comfy.VueNodes.Enabled absent"
+                print("Comfy.VueNodes.Enabled =", d["Comfy.VueNodes.Enabled"])
+                PY
             - run: write the start script that seeds the state tree, ensures the model, then execs the server
               write: /opt/comfyui/start-comfyui.sh
               mode: "0755"
@@ -712,6 +731,31 @@ comfyui:
                 # take it down. It releases the loaded models after COMFYUI_IDLE_UNLOAD_SECS of an
                 # empty queue (0 disables) — see idle-unload.sh for why that matters on a shared card.
                 setsid /opt/comfyui/idle-unload.sh > /dev/null 2>&1 &
+                # NODES 2.0 (the Vue node renderer) as the POD DEFAULT: the frontend reads
+                # user/default/comfy.settings.json at start. Seeded ONLY when the key is absent, so a
+                # user who turned it off keeps their choice; other settings are preserved verbatim.
+                SETTINGS="${BASE}/user/default/comfy.settings.json"
+                mkdir -p "${BASE}/user/default"
+                python3 - "${SETTINGS}" <<'PY'
+                import json, os, sys
+                p = sys.argv[1]
+                d = {}
+                if os.path.exists(p):
+                    try:
+                        with open(p) as f:
+                            d = json.load(f)
+                    except Exception:
+                        d = {}
+                if not isinstance(d, dict):
+                    d = {}
+                if "Comfy.VueNodes.Enabled" not in d:
+                    d["Comfy.VueNodes.Enabled"] = True
+                    with open(p, "w") as f:
+                        json.dump(d, f, indent=2)
+                    print("comfy.settings.json: Nodes 2.0 enabled by default (key was absent)")
+                else:
+                    print("comfy.settings.json: Nodes 2.0 left as the user set it")
+                PY
                 # Memory policy: Dynamic VRAM is ON by default (torch >= 2.8, Nvidia) and is the
                 # mechanism that makes models larger than VRAM runnable. It faults weights in per
                 # layer and evicts under pressure. Do NOT pass --lowvram/--novram/--highvram/
@@ -759,7 +803,7 @@ comfyui:
               # The literal versions are the in-tree witness for the pixi.toml pins (the same
               # reason as the ref check: a braced variable would make the step SKIP).
               command: |
-                python3 - <<'PY'
+                /home/user/.pixi/envs/default/bin/python - <<'PY'
                 from importlib.metadata import version
                 want = {
                     "comfyui-frontend-package": "1.59.6",
@@ -771,6 +815,11 @@ comfyui:
                 print("pinned ComfyUI packages OK")
                 PY
               exit_status: 0
+            - check: the pixi environment interpreter exists at the path the image checks use
+              id: comfyui-pixi-python
+              file:
+                file: /home/user/.pixi/envs/default/bin/python
+                exists: true
             - check: the start script is present and executable
               id: comfyui-start-script
               file:
@@ -792,7 +841,7 @@ comfyui:
                 disabled, /api/manager/version answers 404, and every page shows the upgrade prompt
               id: comfyui-manager-version
               command: |
-                python - <<'PY'
+                /home/user/.pixi/envs/default/bin/python - <<'PY'
                 import importlib.util
                 from importlib.metadata import version
                 v = version("comfyui-manager")
@@ -895,6 +944,14 @@ comfyui:
               # claim this step makes checkable. Logic lives in the baked script: an assert-only
               # step carries no shell variables at all (measured).
               command: /opt/comfyui/check-launch-flags.sh
+              exit_status: 0
+
+            - check: Nodes 2.0 (the Vue renderer) is the pod's default — the setting is present in the
+                user settings file the frontend reads at start
+              id: comfyui-nodes-2-default
+              context:
+                - runtime
+              command: /opt/comfyui/check-nodes-2.sh
               exit_status: 0
 
             - check: the pod releases its loaded models on request, and the server's own vram_free

@@ -198,6 +198,29 @@ Because it replaces the `loras` directory inside the `comfyui` volume, treat it 
 shelf: anything you drop there shows up in ComfyUI's LoraLoader, and anything trained in the
 toolkit pod appears without a restart.
 
+## Nodes 2.0 and the pixi platform
+
+**Nodes 2.0 is the pod default.** The frontend's Vue node renderer is the setting
+`Comfy.VueNodes.Enabled`; the launcher seeds it `true` in
+`user/default/comfy.settings.json` **only when the key is absent**, so a user who turns it off keeps
+their choice and every other setting is preserved. `comfyui-nodes-2-default` asserts the key is
+present in the file the frontend reads at start.
+
+**The lock is resolved for the platform the build installs on.** The image builder appends
+`[system-requirements] libc = { family = "glibc", version = "2.39" }` when a candy's `pixi.toml`
+lacks it, which makes pixi resolve the platform as `linux-64-glibc-2-39`. A lock resolved for a bare
+`linux-64` then fails `pixi install --frozen`:
+
+```
+× the lock file has no entry for platform 'linux-64-glibc-2-39' in environment 'default'
+```
+
+So `pixi.toml` declares that section itself (the builder then skips its append) and `pixi.lock` is
+resolved with it (`platforms: [{name: linux-64-glibc-2-39, …}]`). Measured: with the section absent
+the frozen install refuses; with it the install proceeds. The inline `platforms = [{… glibc …}]`
+form is rejected by current pixi ("platform entry rejected"), so the `[system-requirements]`
+section is the correct spelling.
+
 ## Related
 
 - `/charly-image:image` — image family umbrella (`candy:` image entries — those carrying `base:`/`from:` — in `charly.yml`, build/validate/inspect/list)
